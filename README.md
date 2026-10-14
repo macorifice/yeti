@@ -26,10 +26,11 @@ Projects have a mode, chosen at creation:
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
 | `list_requirements` | List requirements, filtered by priority, status or project |
+| `export_backlog` | Export a project backlog as Markdown or CSV |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
 | `add_user_story` | Create a user story with acceptance criteria |
 | `prioritize_rice` | Compute and sort RICE scores |
-| `map_user_flow` | Generate a Mermaid flow diagram |
+| `map_user_flow` | Generate a Mermaid flow diagram, with Yes/No branches on decisions |
 
 Requirements, stories, RICE scores and flows accept an optional `projectId` to link them to a project.
 
