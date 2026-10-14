@@ -12,13 +12,16 @@ It covers five phases, in order:
 4. **flows**: Mermaid flow diagrams
 5. **verification**: all `must` requirements completed, then the project closes
 
-A phase only advances when its requirements are met. `advance_phase` tells you what is missing.
+Projects have a mode, chosen at creation:
+
+- **`strict`** (default): a phase advances only when its requirements are met. `advance_phase` tells you what is missing.
+- **`free`**: phases advance regardless, and the response lists what was skipped.
 
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
-| `create_project` | Start a project in the discovery phase |
+| `create_project` | Start a project in the discovery phase, in `strict` or `free` mode |
 | `get_project` | Show phase, what is missing, and linked items |
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
@@ -78,7 +81,7 @@ The test starts the server on a temporary database and checks every tool and the
 
 ## Status
 
-Early version (0.2.0). Phases are strict by design. Making them optional is planned but not implemented.
+Early version (0.2.0). Projects can run in `strict` or `free` mode.
 
 ## License
 

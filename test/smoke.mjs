@@ -124,5 +124,22 @@ const info = JSON.parse(await call("get_project", { projectId: p.id }));
 assert.equal(info.phase, "closed");
 ok("verification blocks with open musts and closes when all are done");
 
+// Free mode: phases can be advanced with items missing, and the skipped items are reported
+const free = JSON.parse(await call("create_project", { name: "Free project", problem: "Test", users: "testers", goal: "test free mode", mode: "free" }));
+assert.equal(free.mode, "free");
+let fadv = JSON.parse(await call("advance_phase", { projectId: free.id }));
+assert.equal(fadv.phase, "definition");
+fadv = JSON.parse(await call("advance_phase", { projectId: free.id }));
+assert.equal(fadv.phase, "prioritization");
+assert.equal(fadv.skipped.length, 2, "definition items reported as skipped");
+ok("free mode advances and reports skipped items");
+
+// Strict is the default mode
+const def = JSON.parse(await call("create_project", { name: "Default project", problem: "Test", users: "testers", goal: "default mode" }));
+assert.equal(def.mode, "strict");
+assert.equal(JSON.parse(await call("advance_phase", { projectId: def.id })).phase, "definition");
+assert.equal(JSON.parse(await call("advance_phase", { projectId: def.id })).phase, "definition");
+ok("strict is the default and still blocks");
+
 await client.close();
 console.log(`\n${passed} checks passed`);
