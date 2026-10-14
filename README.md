@@ -1,4 +1,4 @@
-# Yeti PM
+# Yeti
 
 Available on npm as [`yeti-mcp`](https://www.npmjs.com/package/yeti-mcp).
 
