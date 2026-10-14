@@ -35,7 +35,7 @@ Requirements, stories, RICE scores and flows accept an optional `projectId` to l
 ## Install
 
 ```bash
-git clone <this-repo-url> yeti
+git clone https://github.com/macorifice/yeti.git
 cd yeti
 npm install
 npm run build
