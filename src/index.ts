@@ -42,6 +42,7 @@ type Project = {
   goal: string;
   phase: number; // index into PHASES
   closed: boolean;
+  mode?: "strict" | "free"; // missing when created before modes existed: treated as strict
   rice: { name: string; score: number }[];
   flows: string[];
   createdAt: string;
@@ -105,15 +106,16 @@ const projectIdSchema = z.number().int().optional().describe("Id of the project 
 server.registerTool(
   "create_project",
   {
-    description: "Create a design project. It starts in the 'discovery' phase: problem, users and goal are required.",
+    description: "Create a design project. It starts in the 'discovery' phase: problem, users and goal are required. Mode 'strict' (default) blocks advancing until each phase is complete; 'free' allows advancing and reports what was skipped.",
     inputSchema: {
       name: z.string().min(2),
       problem: z.string().describe("The problem it solves"),
       users: z.string().describe("Who it is for"),
       goal: z.string().describe("What the user or business should achieve"),
+      mode: z.enum(["strict", "free"]).default("strict"),
     },
   },
-  async ({ name, problem, users, goal }) => {
+  async ({ name, problem, users, goal, mode }) => {
     const db = await loadDb();
     const project: Project = {
       id: db.nextId++,
@@ -121,6 +123,7 @@ server.registerTool(
       problem,
       users,
       goal,
+      mode,
       phase: 0,
       closed: false,
       rice: [],
@@ -156,7 +159,7 @@ server.registerTool(
 server.registerTool(
   "advance_phase",
   {
-    description: "Move to the next phase if the current one is complete; otherwise list what is missing. After 'verification' it closes the project.",
+    description: "Move to the next phase. In 'strict' mode, it lists what is missing and does not advance. In 'free' mode, it advances and reports what was skipped. After 'verification' it closes the project.",
     inputSchema: { projectId: z.number().int() },
   },
   async ({ projectId }) => {
@@ -164,16 +167,18 @@ server.registerTool(
     const p = db.projects.find((x) => x.id === projectId);
     if (!p) return text(`Project ${projectId} not found.`);
     if (p.closed) return text("Project already closed.");
+    const free = p.mode === "free";
     const missing = missingFor(db, p);
-    if (missing.length) return text({ phase: PHASES[p.phase], missing });
+    if (missing.length && !free) return text({ phase: PHASES[p.phase], missing });
+    const skipped = free ? missing : [];
     if (p.phase === PHASES.length - 1) {
       p.closed = true;
       await saveDb(db);
-      return text("Project closed: all must requirements are complete.");
+      return text(free ? { message: "Project closed (free mode).", skipped } : "Project closed: all must requirements are complete.");
     }
     p.phase++;
     await saveDb(db);
-    return text({ phase: PHASES[p.phase] });
+    return text({ phase: PHASES[p.phase], ...(skipped.length ? { skipped } : {}) });
   },
 );
 
