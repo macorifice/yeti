@@ -1,5 +1,7 @@
 # Yeti PM
 
+Available on npm as [`yeti-mcp`](https://www.npmjs.com/package/yeti-mcp).
+
 An [MCP](https://modelcontextprotocol.io) server that guides product design work through mandatory phases, so an AI assistant like Claude can run a project from problem to verified scope.
 
 It covers five phases, in order:
