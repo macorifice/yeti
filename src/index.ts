@@ -326,7 +326,8 @@ server.registerTool(
 server.registerTool(
   "map_user_flow",
   {
-    description: "Generate a Mermaid flowchart from a list of steps. With projectId, saves the diagram to the project.",
+    description:
+      "Generate a Mermaid flowchart from a list of steps. Steps are linked in order; a decision (diamond) gets a 'Yes' edge to the next step, or to 'yes' if set, and a 'No' edge to 'no' if set. With projectId, saves the diagram to the project.",
     inputSchema: {
       name: z.string(),
       steps: z
@@ -334,6 +335,8 @@ server.registerTool(
           z.object({
             label: z.string(),
             decision: z.boolean().default(false).describe("true if this is a decision point (diamond)"),
+            yes: z.number().int().min(0).optional().describe("Index of the step reached on Yes. Defaults to the next step"),
+            no: z.number().int().min(0).optional().describe("Index of the step reached on No. Only for decisions; omit for no No branch"),
           }),
         )
         .min(2),
@@ -341,11 +344,22 @@ server.registerTool(
     },
   },
   async ({ name, steps, projectId }) => {
+    const outOfRange = steps.some((s) => [s.yes, s.no].some((t) => t !== undefined && t >= steps.length));
+    if (outOfRange) return text(`Step index out of range: there are ${steps.length} steps (0 to ${steps.length - 1}).`);
+
     const lines = ["flowchart TD", `  %% ${name}`];
     steps.forEach((s, i) => {
       const id = `S${i}`;
       lines.push(s.decision ? `  ${id}{${s.label}}` : `  ${id}[${s.label}]`);
-      if (i > 0) lines.push(`  S${i - 1} --> ${id}`);
+    });
+    steps.forEach((s, i) => {
+      if (s.decision) {
+        const yes = s.yes ?? (i + 1 < steps.length ? i + 1 : undefined);
+        if (yes !== undefined) lines.push(`  S${i} -- Yes --> S${yes}`);
+        if (s.no !== undefined) lines.push(`  S${i} -- No --> S${s.no}`);
+      } else if (i + 1 < steps.length) {
+        lines.push(`  S${i} --> S${i + 1}`);
+      }
     });
     const diagram = "```mermaid\n" + lines.join("\n") + "\n```";
     if (projectId !== undefined) {

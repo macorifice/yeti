@@ -82,8 +82,15 @@ ok("prioritize_rice computes and sorts");
 
 const flow = await call("map_user_flow", { name: "Login", steps: [{ label: "Open" }, { label: "Registered?", decision: true }, { label: "Dashboard" }] });
 assert.match(flow, /S1\{Registered\?\}/);
-assert.match(flow, /S1 --> S2/);
-ok("map_user_flow");
+assert.match(flow, /S1 -- Yes --> S2/);
+ok("map_user_flow links the decision with a Yes edge");
+
+const branched = await call("map_user_flow", { name: "Login", steps: [{ label: "Open" }, { label: "Registered?", decision: true, no: 3 }, { label: "Dashboard" }, { label: "Sign up" }] });
+assert.match(branched, /S1 -- Yes --> S2/);
+assert.match(branched, /S1 -- No --> S3/);
+assert.doesNotMatch(branched, /S1 --> S2/);
+assert.match(await call("map_user_flow", { name: "Bad", steps: [{ label: "A", decision: true, no: 9 }, { label: "B" }] }), /out of range/);
+ok("map_user_flow draws Yes and No branches and rejects bad indexes");
 
 // Mandatory project phases
 const p = JSON.parse(await call("create_project", { name: "Quote app", problem: "Slow quotes", users: "craftsmen", goal: "quote in 5 minutes" }));
