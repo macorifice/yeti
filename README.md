@@ -26,6 +26,7 @@ Projects have a mode, chosen at creation:
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
 | `list_requirements` | List requirements, filtered by priority, status or project |
+| `export_backlog` | Export a project backlog as Markdown or CSV |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
 | `add_user_story` | Create a user story with acceptance criteria |
 | `prioritize_rice` | Compute and sort RICE scores |

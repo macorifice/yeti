@@ -373,5 +373,70 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  "export_backlog",
+  {
+    description: "Export a project backlog as Markdown or CSV: requirements (most important first) and user stories.",
+    inputSchema: {
+      projectId: z.number().int(),
+      format: z.enum(["markdown", "csv"]).default("markdown"),
+    },
+  },
+  async ({ projectId, format }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const order = { must: 0, should: 1, could: 2, wont: 3 };
+    const reqs = db.requirements
+      .filter((r) => r.projectId === p.id)
+      .sort((a, b) => order[a.priority] - order[b.priority]);
+    const stories = db.stories.filter((x) => x.projectId === p.id);
+
+    if (format === "csv") {
+      const cell = (v: unknown) => {
+        const str = String(v ?? "");
+        return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+      const rows = [["type", "id", "title", "priority", "status", "details"].join(",")];
+      for (const r of reqs) {
+        rows.push([ "requirement", r.id, r.title, r.priority, r.status, r.description ].map(cell).join(","));
+      }
+      for (const st of stories) {
+        const details = `so that ${st.benefit}; criteria: ${st.acceptanceCriteria.join(" | ")}`;
+        rows.push([ "story", st.id, `As a ${st.persona}, I want ${st.goal}`, "", "", details ].map(cell).join(","));
+      }
+      return text(rows.join("\n"));
+    }
+
+    const lines = [
+      `# ${p.name} — backlog`,
+      "",
+      `**Problem:** ${p.problem}`,
+      `**Users:** ${p.users}`,
+      `**Goal:** ${p.goal}`,
+      "",
+      "## Requirements",
+      "",
+      ...(reqs.length
+        ? reqs.map((r) => `- [${r.status === "done" ? "x" : " "}] **${r.priority.toUpperCase()}** ${r.title}: ${r.description}`)
+        : ["_None yet._"]),
+      "",
+      "## User stories",
+      "",
+      ...(stories.length
+        ? stories.flatMap((st) => [
+            `### Story ${st.id}`,
+            "",
+            `As a ${st.persona}, I want ${st.goal}, so that ${st.benefit}.`,
+            "",
+            ...st.acceptanceCriteria.map((c) => `- [ ] ${c}`),
+            "",
+          ])
+        : ["_None yet._"]),
+    ];
+    return text(lines.join("\n"));
+  },
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

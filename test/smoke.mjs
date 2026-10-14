@@ -32,13 +32,14 @@ assert.deepEqual(names, [
   "add_user_story",
   "advance_phase",
   "create_project",
+  "export_backlog",
   "get_project",
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
   "set_requirement_status",
 ]);
-ok("exposes 9 tools");
+ok("exposes 10 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -147,6 +148,23 @@ assert.equal(def.mode, "strict");
 assert.equal(JSON.parse(await call("advance_phase", { projectId: def.id })).phase, "definition");
 assert.equal(JSON.parse(await call("advance_phase", { projectId: def.id })).phase, "definition");
 ok("strict is the default and still blocks");
+
+// Backlog export
+const ex = JSON.parse(await call("create_project", { name: "Export test", problem: "Export", users: "team", goal: "export" }));
+await call("add_requirement", { title: "Could item", description: "Nice to have", priority: "could", projectId: ex.id });
+await call("add_requirement", { title: "Must, with comma", description: "Say \"hi\"", priority: "must", projectId: ex.id });
+await call("add_user_story", { persona: "user", goal: "export", benefit: "share", acceptanceCriteria: ["File opens"], projectId: ex.id });
+const md = await call("export_backlog", { projectId: ex.id });
+assert.match(md, /# Export test — backlog/);
+assert.ok(md.indexOf("Must, with comma") < md.indexOf("Could item"), "must before could");
+assert.match(md, /### Story \d+/);
+const csv = await call("export_backlog", { projectId: ex.id, format: "csv" });
+const lines = csv.split("\n");
+assert.equal(lines[0], "type,id,title,priority,status,details");
+assert.match(lines[1], /^requirement,\d+,"Must, with comma",must,open,"Say ""hi"""$/);
+assert.match(lines[3], /^story,/);
+assert.match(await call("export_backlog", { projectId: 999 }), /not found/);
+ok("export_backlog exports Markdown and CSV with correct escaping");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
