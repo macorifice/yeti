@@ -1,128 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { mkdirSync } from "node:fs";
+import { writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
 import { renderDashboard, type ProjectView } from "./dashboard.js";
-
-// Data is stored in a local JSON file next to the project
-const here = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.PRODUCT_DESIGN_DB ?? join(here, "..", "data", "yeti.sqlite");
-// JSON file used by earlier versions; imported once if found next to the database
-const LEGACY_JSON_PATH = join(dirname(DB_PATH), "db.json");
-
-// Mandatory phases, in order. A project advances only when the current phase is complete.
-const PHASES = ["discovery", "definition", "prioritization", "flows", "verification"] as const;
-
-type Priority = "must" | "should" | "could" | "wont";
-
-type Requirement = {
-  id: number;
-  projectId?: number;
-  jiraKey?: string; // set once the issue exists in Jira
-  title: string;
-  description: string;
-  priority: Priority;
-  status: "open" | "done";
-  doneBySync?: boolean; // true when sync_from_jira marked it done, so it may reopen
-  createdAt: string;
-};
-
-type Story = {
-  id: number;
-  projectId?: number;
-  jiraKey?: string; // set once the issue exists in Jira
-  requirementIds?: number[]; // requirements this story covers
-  persona: string;
-  goal: string;
-  benefit: string;
-  acceptanceCriteria: string[];
-  criteriaDone?: boolean[]; // same order as acceptanceCriteria
-  doneBySync?: boolean; // true when sync_from_jira ticked the criteria, so it may reopen
-  createdAt: string;
-};
-
-type Project = {
-  id: number;
-  name: string;
-  problem: string;
-  users: string;
-  goal: string;
-  phase: number; // index into PHASES
-  closed: boolean;
-  archived?: boolean; // hidden from list_projects unless asked for
-  mode?: "strict" | "free"; // missing when created before modes existed: treated as strict
-  rice: { name: string; score: number }[];
-  flows: string[];
-  createdAt: string;
-};
-
-type DB = {
-  projects: Project[];
-  requirements: Requirement[];
-  stories: Story[];
-  nextId: number;
-};
-
-let connection: DatabaseSync | undefined;
-
-// One SQLite file. Each entity is stored as a JSON document in its own table, so the
-// rest of the code keeps working with plain objects. Each save is one transaction.
-function openDb(): DatabaseSync {
-  if (connection) return connection;
-  mkdirSync(dirname(DB_PATH), { recursive: true });
-  const c = new DatabaseSync(DB_PATH);
-  c.exec(`
-    CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS requirements (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS stories (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-  `);
-  connection = c;
-  return c;
-}
-
-async function loadDb(): Promise<DB> {
-  const c = openDb();
-  const meta = c.prepare("SELECT value FROM meta WHERE key = 'nextId'").get() as { value: string } | undefined;
-  if (!meta) {
-    // First run on this database: import the old JSON file if there is one
-    try {
-      const legacy = JSON.parse(await readFile(LEGACY_JSON_PATH, "utf8")) as Partial<DB>;
-      const db: DB = { projects: legacy.projects ?? [], requirements: legacy.requirements ?? [], stories: legacy.stories ?? [], nextId: legacy.nextId ?? 1 };
-      await saveDb(db);
-      return db;
-    } catch {
-      return { projects: [], requirements: [], stories: [], nextId: 1 };
-    }
-  }
-  const rows = <T>(table: string): T[] =>
-    (c.prepare(`SELECT data FROM ${table} ORDER BY id`).all() as { data: string }[]).map((r) => JSON.parse(r.data) as T);
-  return { projects: rows<Project>("projects"), requirements: rows<Requirement>("requirements"), stories: rows<Story>("stories"), nextId: Number(meta.value) };
-}
-
-async function saveDb(db: DB): Promise<void> {
-  const c = openDb();
-  c.exec("BEGIN");
-  try {
-    c.exec("DELETE FROM projects; DELETE FROM requirements; DELETE FROM stories; DELETE FROM meta;");
-    const put = (table: string, items: { id: number }[]) => {
-      const stmt = c.prepare(`INSERT INTO ${table} (id, data) VALUES (?, ?)`);
-      for (const item of items) stmt.run(item.id, JSON.stringify(item));
-    };
-    put("projects", db.projects);
-    put("requirements", db.requirements);
-    put("stories", db.stories);
-    c.prepare("INSERT INTO meta (key, value) VALUES ('nextId', ?)").run(String(db.nextId));
-    c.exec("COMMIT");
-  } catch (err) {
-    c.exec("ROLLBACK");
-    throw err;
-  }
-}
+import { startDashboard } from "./web.js";
+import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Priority, type Project, type Requirement, type Story } from "./store.js";
 
 const text = (value: unknown) => ({
   content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
@@ -130,34 +13,6 @@ const text = (value: unknown) => ({
 
 const scoreRice = (i: { reach: number; impact: number; confidence: number; effort: number }) =>
   Math.round(((i.reach * i.impact * i.confidence) / i.effort) * 100) / 100;
-
-// What is still missing to complete the project's current phase
-function missingFor(db: DB, p: Project): string[] {
-  const reqs = db.requirements.filter((r) => r.projectId === p.id);
-  const stories = db.stories.filter((s) => s.projectId === p.id);
-  switch (PHASES[p.phase]) {
-    case "discovery":
-      return [];
-    case "definition":
-      return [
-        ...(reqs.length ? [] : ["at least one requirement (add_requirement with projectId)"]),
-        ...(stories.length ? [] : ["at least one user story (add_user_story with projectId)"]),
-      ];
-    case "prioritization":
-      return p.rice.length ? [] : ["at least one RICE scoring (prioritize_rice with projectId)"];
-    case "flows":
-      return p.flows.length ? [] : ["at least one flow diagram (map_user_flow with projectId)"];
-    case "verification": {
-      const covered = new Set(stories.flatMap((s) => s.requirementIds ?? []));
-      return reqs
-        .filter((r) => r.priority === "must")
-        .flatMap((r) => [
-          ...(r.status !== "done" ? [`unfinished must: "${r.title}" (id ${r.id})`] : []),
-          ...(covered.has(r.id) ? [] : [`must without a user story: "${r.title}" (id ${r.id})`]),
-        ]);
-    }
-  }
-}
 
 const server = new McpServer({ name: "yeti", version: "0.2.0" });
 
@@ -912,6 +767,25 @@ server.registerTool(
   },
 );
 
+let dashboardUrl: string | undefined;
+
+server.registerTool(
+  "open_dashboard",
+  {
+    description: "Start the local, read-only Yeti dashboard and return its address (http://127.0.0.1:...). It shows phases, what is missing, musts and their stories, RICE and flows, and refreshes by itself. It runs on this computer only, while Yeti runs.",
+    inputSchema: {},
+  },
+  async () => {
+    if (!dashboardUrl) {
+      const { url, server: http } = await startDashboard({ port: 4321, tryNext: true });
+      // Do not keep the process alive for the dashboard alone: when Claude closes Yeti, it stops too
+      http.unref();
+      dashboardUrl = url;
+    }
+    return text({ url: dashboardUrl });
+  },
+);
+
 server.registerTool(
   "get_project",
   {
@@ -1235,5 +1109,18 @@ server.registerTool(
   },
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// "yeti-mcp dashboard [--port 4321]" runs only the dashboard; anything else runs the MCP server
+const args = process.argv.slice(2);
+if (args[0] === "dashboard") {
+  const portFlag = args.indexOf("--port");
+  const port = portFlag >= 0 ? Number(args[portFlag + 1]) : 4321;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    console.error("--port needs a number between 0 and 65535");
+    process.exit(1);
+  }
+  const { url } = await startDashboard({ port });
+  console.log(`Yeti dashboard: ${url}`);
+} else {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}

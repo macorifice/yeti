@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yeti</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f4f1;
+    --card: #ffffff;
+    --ink: #26282c;
+    --muted: #6d7078;
+    --faint: #a3a5ab;
+    --line: #e7e4df;
+    --accent: #e2601b;
+    --accent-soft: #fcebe0;
+    --radius: 14px;
+    --font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
+
+  .top { display: flex; align-items: center; gap: 16px; padding: 18px 28px; }
+  .brand { font-weight: 700; font-size: 1.15rem; letter-spacing: -0.01em; }
+  .brand span { color: var(--accent); }
+  .top .spacer { flex: 1; }
+  .search { width: min(280px, 40vw); border: 0; background: var(--card); border-radius: 999px; padding: 8px 14px; font: inherit; color: var(--ink); outline: none; }
+  .search:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
+  .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .9rem; cursor: pointer; user-select: none; }
+  .toggle input { accent-color: var(--accent); }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; padding: 0 28px 48px; align-items: start; }
+  .layout > * { min-width: 0; }
+  .sidebar { position: sticky; top: 16px; }
+  .list { display: flex; flex-direction: column; gap: 4px; }
+  .item { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+  .item:hover { background: rgba(255, 255, 255, .6); }
+  .item.active { background: var(--card); }
+  .item .name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .meta { color: var(--muted); font-size: .85rem; display: flex; justify-content: space-between; gap: 8px; }
+  .item .meta .attention { color: var(--accent); }
+  .progress { height: 3px; background: var(--line); border-radius: 3px; margin-top: 7px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+  .empty { color: var(--muted); padding: 12px; }
+
+  .main { min-width: 0; max-width: 980px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 28px 32px; }
+  .card + .card { margin-top: 18px; }
+  h1 { font-size: 1.8rem; line-height: 1.2; margin: 0; letter-spacing: -0.015em; }
+  h2 { font-size: 1.05rem; margin: 0 0 14px; }
+  .tags { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .tag { font-size: .8rem; color: var(--muted); background: var(--bg); padding: 2px 10px; border-radius: 999px; }
+  .brief { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 22px; }
+  .brief dt { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .brief dd { margin: 4px 0 0; }
+
+  .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin: 28px 0 0; padding: 0; list-style: none; }
+  .step { position: relative; padding-top: 22px; color: var(--faint); font-size: .9rem; }
+  .step::before { content: ""; position: absolute; top: 6px; left: 0; right: 0; height: 2px; background: var(--line); }
+  .step::after { content: ""; position: absolute; top: 1px; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--card); border: 2px solid var(--line); }
+  .step.done { color: var(--ink); }
+  .step.done::before { background: var(--ink); }
+  .step.done::after { background: var(--ink); border-color: var(--ink); }
+  .step.current { color: var(--accent); font-weight: 600; }
+  .step.current::after { border-color: var(--accent); background: var(--accent); }
+
+  .next { margin-top: 24px; padding: 14px 18px; border-radius: 12px; background: var(--bg); }
+  .next.attention { background: var(--accent-soft); }
+  .next p { margin: 0; font-weight: 600; }
+  .next ul { margin: 6px 0 0; padding-left: 20px; }
+
+  .figures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 26px; }
+  .figure b { display: block; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+  .figure span { color: var(--muted); font-size: .85rem; }
+
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; padding-top: 0; }
+  .row .title { font-weight: 500; }
+  .row .desc { color: var(--muted); font-size: .9rem; }
+  .row .side { display: flex; gap: 12px; align-items: baseline; color: var(--muted); font-size: .85rem; white-space: nowrap; }
+  .done-mark { color: var(--ink); }
+  .warn { color: var(--accent); font-weight: 600; }
+  .jira { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .jira:hover { color: var(--accent); border-color: var(--accent); }
+
+  .group + .group { margin-top: 22px; }
+  .group h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+
+  .story { padding: 14px 0; border-top: 1px solid var(--line); }
+  .story:first-child { border-top: 0; padding-top: 0; }
+  .story .head { display: flex; justify-content: space-between; gap: 12px; }
+  .story .sentence { font-weight: 500; }
+  .story .sentence em { font-style: normal; color: var(--muted); }
+  .criteria { list-style: none; margin: 8px 0 0; padding: 0; }
+  .criteria li { display: flex; gap: 8px; color: var(--muted); }
+  .criteria li.ok { color: var(--ink); }
+  .criteria li::before { content: "○"; color: var(--faint); }
+  .criteria li.ok::before { content: "✓"; color: var(--ink); }
+  .links { color: var(--muted); font-size: .85rem; margin-top: 6px; }
+
+  .bar { display: grid; grid-template-columns: minmax(120px, 34%) 1fr 56px; gap: 14px; align-items: center; padding: 6px 0; }
+  .bar .track { height: 8px; background: var(--bg); border-radius: 8px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); border-radius: 8px; }
+  .bar b { text-align: right; font-weight: 600; }
+
+  .flow + .flow { margin-top: 22px; }
+  .flow h3 { font-size: .95rem; margin: 0 0 8px; }
+  .flow pre { margin: 0; padding: 16px; background: var(--bg); border-radius: 10px; overflow-x: auto; font: .85rem/1.5 ui-monospace, Menlo, monospace; color: var(--ink); }
+  .flow pre[data-processed] { background: transparent; padding: 0; text-align: center; }
+  .muted { color: var(--muted); }
+
+  footer { color: var(--faint); font-size: .8rem; margin-top: 20px; }
+  .error { color: var(--accent); }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; padding: 0 16px 40px; }
+    .top { padding: 16px; flex-wrap: wrap; }
+    .search { width: 100%; order: 3; }
+    .sidebar { position: static; }
+    .list { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+    .item { min-width: 200px; }
+    .card { padding: 22px 18px; }
+    .brief { grid-template-columns: 1fr; gap: 14px; }
+    .figures { grid-template-columns: 1fr 1fr; }
+    .row { grid-template-columns: 1fr; gap: 4px; }
+    .row .side { white-space: normal; flex-wrap: wrap; }
+    .steps { grid-template-columns: 1fr; gap: 12px; }
+    .step { padding: 0 0 0 24px; }
+    .step::before { top: 12px; bottom: -14px; left: 5px; right: auto; width: 2px; height: auto; }
+    .step:last-child::before { display: none; }
+    .step::after { top: 5px; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Yeti<span>.</span></div>
+    <div class="spacer"></div>
+    <input class="search" type="search" placeholder="Search projects" aria-label="Search projects">
+    <label class="toggle"><input type="checkbox" class="archived"> Archived</label>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Projects"><div class="list"></div></nav>
+    <main class="main"><div class="empty">Loading…</div></main>
+  </div>
+
+<script type="module">
+  // Everything on the page is built with textContent, so text from the database is never parsed as HTML.
+  const state = { projects: [], selected: null, query: "", archived: false, lastDetail: "" };
+  const listEl = document.querySelector(".list");
+  const mainEl = document.querySelector(".main");
+
+  function h(tag, props, ...children) {
+    const el = document.createElement(tag);
+    for (const [key, value] of Object.entries(props || {})) {
+      if (value == null || value === false) continue;
+      if (key === "class") el.className = value;
+      else if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+      else el.setAttribute(key, value === true ? "" : value);
+    }
+    for (const child of children.flat()) {
+      if (child == null || child === false) continue;
+      el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return el;
+  }
+
+  const label = (phase) => phase.charAt(0).toUpperCase() + phase.slice(1);
+  const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+  const PRIORITIES = [["must", "Must"], ["should", "Should"], ["could", "Could"], ["wont", "Won't"]];
+
+  async function getJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json();
+  }
+
+  function jiraLink(site, key) {
+    if (!key) return null;
+    if (!site) return h("span", { class: "muted" }, key);
+    return h("a", { class: "jira", href: `${site}/browse/${encodeURIComponent(key)}`, target: "_blank", rel: "noopener noreferrer" }, key);
+  }
+
+  // Sidebar
+  function renderList() {
+    const q = state.query.trim().toLowerCase();
+    const items = state.projects.filter((p) => !q || p.name.toLowerCase().includes(q));
+    listEl.replaceChildren(
+      ...(items.length
+        ? items.map((p) => {
+            const share = Math.round((p.phaseIndex / p.phaseCount) * 100);
+            const status = p.closed ? "Closed" : label(p.phase);
+            return h(
+              "button",
+              { class: `item${p.id === state.selected ? " active" : ""}`, onclick: () => select(p.id) },
+              h("span", { class: "name" }, p.name),
+              h("span", { class: "meta" },
+                h("span", null, `${status}${p.archived ? " · archived" : ""}`),
+                p.missing ? h("span", { class: "attention" }, `${p.missing} to do`) : null),
+              h("div", { class: "progress" }, h("i", { style: `width:${share}%` })),
+            );
+          })
+        : [h("div", { class: "empty" }, state.projects.length ? "No project matches." : "No projects yet. Create one from Claude with create_project.")]),
+    );
+  }
+
+  // Detail
+  function renderDetail(d) {
+    const reqById = new Map(d.requirements.map((r) => [r.id, r]));
+    const c = d.counts;
+
+    const steps = h("ol", { class: "steps" },
+      d.phases.map((phase, i) =>
+        h("li", { class: `step ${i < d.phaseIndex ? "done" : i === d.phaseIndex && !d.closed ? "current" : ""}` }, label(phase))));
+
+    let next;
+    if (d.closed) {
+      next = h("div", { class: "next" }, h("p", null, "This project is closed."));
+    } else if (d.missingItems.length) {
+      next = h("div", { class: "next attention" },
+        h("p", null, `To finish ${label(d.phase)}:`),
+        h("ul", null, d.missingItems.map((m) => h("li", null, sentence(m)))));
+    } else {
+      const following = d.phases[d.phaseIndex + 1];
+      next = h("div", { class: "next" }, h("p", null, following ? `Ready to move to ${label(following)}.` : "Ready to close the project."));
+    }
+
+    const figure = (value, text) => h("div", { class: "figure" }, h("b", null, value), h("span", null, text));
+    const header = h("section", { class: "card" },
+      h("h1", null, d.name),
+      h("div", { class: "tags" },
+        h("span", { class: "tag" }, d.mode === "free" ? "Free mode" : "Strict mode"),
+        d.archived ? h("span", { class: "tag" }, "Archived") : null),
+      h("dl", { class: "brief" },
+        h("div", null, h("dt", null, "Problem"), h("dd", null, d.problem)),
+        h("div", null, h("dt", null, "Users"), h("dd", null, d.users)),
+        h("div", null, h("dt", null, "Goal"), h("dd", null, d.goal))),
+      steps,
+      next,
+      h("div", { class: "figures" },
+        figure(`${c.requirementsDone}/${c.requirements}`, "requirements done"),
+        figure(`${c.mustsCovered}/${c.musts}`, "musts with a story"),
+        figure(`${c.criteriaDone}/${c.criteriaTotal}`, "criteria met"),
+        figure(String(c.inJira), "items in Jira")));
+
+    // Musts first: they decide whether the project can close
+    const musts = d.requirements.filter((r) => r.priority === "must");
+    const mustCard = h("section", { class: "card" },
+      h("h2", null, "Musts and their stories"),
+      musts.length
+        ? h("ul", { class: "rows" }, musts.map((r) =>
+            h("li", { class: "row" },
+              h("div", null, h("div", { class: "title" }, r.title), r.description ? h("div", { class: "desc" }, r.description) : null),
+              h("div", { class: "side" },
+                r.storyIds.length ? h("span", null, `${r.storyIds.length} ${r.storyIds.length === 1 ? "story" : "stories"}`) : h("span", { class: "warn" }, "No story"),
+                h("span", { class: r.status === "done" ? "done-mark" : null }, r.status === "done" ? "Done" : "Open"),
+                jiraLink(d.jiraSite, r.jiraKey)))))
+        : h("p", { class: "muted" }, "No must requirements yet."));
+
+    const others = PRIORITIES.slice(1)
+      .map(([key, name]) => [name, d.requirements.filter((r) => r.priority === key)])
+      .filter(([, items]) => items.length);
+    const reqCard = others.length
+      ? h("section", { class: "card" },
+          h("h2", null, "Other requirements"),
+          others.map(([name, items]) =>
+            h("div", { class: "group" },
+              h("h3", null, `${name} · ${items.length}`),
+              h("ul", { class: "rows" }, items.map((r) =>
+                h("li", { class: "row" },
+                  h("div", null, h("div", { class: "title" }, r.title), r.description ? h("div", { class: "desc" }, r.description) : null),
+                  h("div", { class: "side" },
+                    h("span", { class: r.status === "done" ? "done-mark" : null }, r.status === "done" ? "Done" : "Open"),
+                    jiraLink(d.jiraSite, r.jiraKey))))))))
+      : null;
+
+    const storyCard = h("section", { class: "card" },
+      h("h2", null, "User stories"),
+      d.stories.length
+        ? d.stories.map((s) => {
+            const met = s.criteria.filter((x) => x.done).length;
+            const linked = s.requirementIds.map((id) => reqById.get(id)?.title).filter(Boolean);
+            return h("div", { class: "story" },
+              h("div", { class: "head" },
+                h("div", { class: "sentence" },
+                  h("em", null, "As a "), s.persona, h("em", null, ", I want "), s.goal, h("em", null, ", so that "), s.benefit, "."),
+                h("div", { class: "side muted" }, `${met}/${s.criteria.length}`, " ", jiraLink(d.jiraSite, s.jiraKey))),
+              h("ul", { class: "criteria" }, s.criteria.map((x) => h("li", { class: x.done ? "ok" : null }, x.text))),
+              linked.length ? h("div", { class: "links" }, `Covers: ${linked.join(", ")}`) : null);
+          })
+        : h("p", { class: "muted" }, "No user stories yet."));
+
+    const max = Math.max(1, ...d.rice.map((r) => r.score));
+    const riceCard = h("section", { class: "card" },
+      h("h2", null, "RICE"),
+      d.rice.length
+        ? d.rice.map((r) =>
+            h("div", { class: "bar" },
+              h("span", null, r.name),
+              h("div", { class: "track" }, h("div", { class: "fill", style: `width:${Math.max(2, Math.round((r.score / max) * 100))}%` })),
+              h("b", null, String(r.score))))
+        : h("p", { class: "muted" }, "No RICE scores yet."));
+
+    const flowNodes = [];
+    const flowCard = h("section", { class: "card" },
+      h("h2", null, "Flows"),
+      d.flows.length
+        ? d.flows.map((f) => {
+            const pre = h("pre", { class: "mermaid" }, f.source);
+            flowNodes.push(pre);
+            return h("div", { class: "flow" }, h("h3", null, f.name), pre);
+          })
+        : h("p", { class: "muted" }, "No flows yet."));
+
+    mainEl.replaceChildren(header, mustCard, reqCard, storyCard, riceCard, flowCard,
+      h("footer", null, "Read-only view. It refreshes every 10 seconds. Work items live in Jira."));
+    renderFlows(flowNodes);
+  }
+
+  // Mermaid comes from a CDN; without it the diagrams stay readable as text
+  let mermaidReady;
+  function loadMermaid() {
+    mermaidReady ??= import("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs")
+      .then(({ default: mermaid }) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: "base",
+          themeVariables: {
+            fontFamily: "Schibsted Grotesk, system-ui, sans-serif",
+            fontSize: "14px",
+            primaryColor: "#ffffff",
+            primaryBorderColor: "#cfcac2",
+            primaryTextColor: "#26282c",
+            lineColor: "#6d7078",
+            secondaryColor: "#f5f4f1",
+            tertiaryColor: "#f5f4f1",
+          },
+        });
+        return mermaid;
+      })
+      .catch(() => null);
+    return mermaidReady;
+  }
+  async function renderFlows(nodes) {
+    if (!nodes.length) return;
+    const mermaid = await loadMermaid();
+    if (!mermaid) return;
+    try { await mermaid.run({ nodes }); } catch { /* the text version stays visible */ }
+  }
+
+  // Data loading
+  async function loadList() {
+    state.projects = await getJson(`/api/projects${state.archived ? "?archived=1" : ""}`);
+    if (!state.projects.some((p) => p.id === state.selected)) {
+      const first = state.projects.find((p) => !p.closed) ?? state.projects[0];
+      state.selected = first ? first.id : null;
+    }
+    renderList();
+  }
+
+  async function loadDetail(force) {
+    if (state.selected == null) {
+      state.lastDetail = "";
+      mainEl.replaceChildren(h("section", { class: "card" }, h("h1", null, "No project yet"),
+        h("p", { class: "muted" }, "Ask Claude to create a project with Yeti. It will show up here.")));
+      return;
+    }
+    const raw = await fetch(`/api/projects/${state.selected}`, { cache: "no-store" });
+    if (!raw.ok) throw new Error(`${raw.status}`);
+    const text = await raw.text();
+    // Redraw only when something changed, so diagrams do not flicker on every refresh
+    if (!force && text === state.lastDetail) return;
+    state.lastDetail = text;
+    renderDetail(JSON.parse(text));
+  }
+
+  async function refresh(force) {
+    try {
+      await loadList();
+      await loadDetail(force);
+    } catch (err) {
+      mainEl.replaceChildren(h("section", { class: "card" }, h("p", { class: "error" }, "Cannot reach the Yeti server. Is it still running?")));
+    }
+  }
+
+  function select(id) {
+    state.selected = id;
+    history.replaceState(null, "", `#/project/${id}`);
+    renderList();
+    loadDetail(true).catch(() => {});
+  }
+
+  document.querySelector(".search").addEventListener("input", (e) => { state.query = e.target.value; renderList(); });
+  document.querySelector(".archived").addEventListener("change", (e) => { state.archived = e.target.checked; refresh(true); });
+  window.addEventListener("focus", () => refresh(false));
+
+  const fromHash = location.hash.match(/^#\/project\/(\d+)$/);
+  if (fromHash) state.selected = Number(fromHash[1]);
+  refresh(true);
+  setInterval(() => refresh(false), 10000);
+</script>
+</body>
+</html>

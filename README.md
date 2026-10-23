@@ -31,6 +31,7 @@ Projects have a mode, chosen at creation:
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
 | `set_project_mode` | Switch a project between `strict` and `free` |
+| `open_dashboard` | Start the live, read-only dashboard and return its local address |
 | `export_dashboard` | Write a read-only HTML dashboard (phases, missing items, must coverage, RICE, flows) to `data/exports/dashboard.html` |
 | `project_summary` | Progress overview: requirements by priority and status, musts covered by stories, criteria done, RICE leader, Jira links, and what is missing to close |
 | `get_project` | Show phase, what is missing, and linked items |
@@ -121,6 +122,27 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 
 - Data is stored locally, in `data/yeti.sqlite`. The content still passes through the chat, so do not put sensitive data in it.
 - RICE scores are the numbers you enter. Yeti sorts them; it does not estimate them.
+
+## Dashboard
+
+Yeti has a read-only dashboard for the design side of your projects: the phase each project is in, what is missing to move on, which musts are covered by user stories, acceptance criteria, RICE scores and flow diagrams. It does not show a task board: execution belongs in Jira.
+
+Open it from Claude:
+
+> Open the Yeti dashboard.
+
+Claude calls `open_dashboard` and gives you an address such as `http://127.0.0.1:4321`. Or start it from a terminal:
+
+```bash
+npx yeti-mcp dashboard --port 4321
+```
+
+- It listens on `127.0.0.1` only, so it is not reachable from other machines, and it refuses requests for other host names.
+- It reads the same database as the MCP server and refreshes every 10 seconds.
+- Jira keys become links when `JIRA_SITE` is set.
+- Diagrams are drawn with Mermaid, loaded from a CDN. Without a connection they are shown as text.
+
+`export_dashboard` still writes a static snapshot to `data/exports/dashboard.html`, for sharing.
 
 ## Credentials
 

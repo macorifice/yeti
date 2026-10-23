@@ -49,6 +49,7 @@ assert.deepEqual(names, [
   "list_requirements",
   "list_stories",
   "map_user_flow",
+  "open_dashboard",
   "prioritize_rice",
   "project_summary",
   "push_to_jira",
@@ -61,7 +62,7 @@ assert.deepEqual(names, [
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 30 tools");
+ok("exposes 31 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -501,6 +502,15 @@ assert.match(html, /<pre class="mermaid">flowchart TD/);
 assert.match(html, /Idea/);
 assert.match(await call("export_dashboard", { projectId: 9999 }), /not found/);
 ok("export_dashboard writes escaped HTML with coverage, RICE and flows, read-only");
+
+// open_dashboard starts the local dashboard and returns its address
+const opened = JSON.parse(await call("open_dashboard"));
+assert.match(opened.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+const apiRes = await fetch(`${opened.url}/api/projects`);
+assert.equal(apiRes.status, 200);
+assert.ok(Array.isArray(await apiRes.json()));
+assert.equal(JSON.parse(await call("open_dashboard")).url, opened.url, "a second call reuses the running dashboard");
+ok("open_dashboard returns a working local address and reuses it");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
