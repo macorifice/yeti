@@ -287,6 +287,57 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_project",
+  {
+    description: "Change a project's name, problem, users or goal. Only the fields you pass are changed.",
+    inputSchema: {
+      projectId: z.number().int(),
+      name: z.string().min(2).optional(),
+      problem: z.string().optional(),
+      users: z.string().optional(),
+      goal: z.string().optional(),
+    },
+  },
+  async ({ projectId, name, problem, users, goal }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    if (name !== undefined) p.name = name;
+    if (problem !== undefined) p.problem = problem;
+    if (users !== undefined) p.users = users;
+    if (goal !== undefined) p.goal = goal;
+    await saveDb(db);
+    return text(p);
+  },
+);
+
+server.registerTool(
+  "search_items",
+  {
+    description: "Search requirements and user stories by text (case-insensitive). Optionally limit to one project.",
+    inputSchema: {
+      query: z.string().min(2),
+      projectId: projectIdSchema,
+    },
+  },
+  async ({ query, projectId }) => {
+    const db = await loadDb();
+    const q = query.toLowerCase();
+    const has = (...fields: string[]) => fields.some((f) => f.toLowerCase().includes(q));
+    const inProject = (x: { projectId?: number }) => projectId === undefined || x.projectId === projectId;
+    const hits = [
+      ...db.requirements
+        .filter((r) => inProject(r) && has(r.title, r.description))
+        .map((r) => ({ type: "requirement", id: r.id, projectId: r.projectId, title: r.title })),
+      ...db.stories
+        .filter((st) => inProject(st) && has(st.persona, st.goal, st.benefit, ...st.acceptanceCriteria))
+        .map((st) => ({ type: "story", id: st.id, projectId: st.projectId, title: `As a ${st.persona}, I want ${st.goal}` })),
+    ];
+    return text(hits.length ? hits : `No items match "${query}".`);
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
