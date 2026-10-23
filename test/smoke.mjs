@@ -50,10 +50,11 @@ assert.deepEqual(names, [
   "set_criterion_status",
   "set_project_mode",
   "set_requirement_status",
+  "sync_from_jira",
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 22 tools");
+ok("exposes 23 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -359,6 +360,14 @@ assert.equal(limited.count, 1, "limit applies to the preview");
 assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
 assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
 ok("push_to_jira reports missing credentials and unknown projects, without sending");
+
+// Jira update and sync guards (no network: credentials are blank in tests)
+const sy = JSON.parse(await call("create_project", { name: "Sync guards", problem: "p", users: "u", goal: "g" }));
+assert.match(await call("sync_from_jira", { projectId: sy.id }), /Missing JIRA_SITE/);
+assert.match(await call("sync_from_jira", { projectId: 9999 }), /not found/);
+const upPreview = JSON.parse(await call("push_to_jira", { projectId: sy.id, projectKey: "PROJ", update: true }));
+assert.deepEqual(upPreview.updates, []);
+ok("sync_from_jira reports missing credentials, and update preview lists nothing unlinked");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

@@ -462,18 +462,28 @@ const adfDoc = (block: string) => ({
   content: (block || " ").split("\n").map((line) => ({ type: "paragraph", content: [{ type: "text", text: line || " " }] })),
 });
 
+// Credentials from the environment, or a message saying which one is missing
+function jiraAuth(): { site: string; auth: string } | string {
+  const site = process.env.JIRA_SITE;
+  const email = process.env.JIRA_EMAIL;
+  const token = process.env.JIRA_API_TOKEN;
+  if (!site || !email || !token) return "Missing JIRA_SITE, JIRA_EMAIL or JIRA_API_TOKEN in the environment.";
+  return { site, auth: "Basic " + Buffer.from(`${email}:${token}`).toString("base64") };
+}
+
 server.registerTool(
   "push_to_jira",
   {
-    description: "Create Jira issues for a project: one Task per requirement and one Story per user story. Items already sent are skipped. dryRun (default true) only lists what would be created. Real sending needs JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN in the environment.",
+    description: "Create Jira issues for a project: one Task per requirement and one Story per user story. Items already sent are skipped. With update: true, also refreshes the issues already linked. dryRun (default true) only lists what would be sent.",
     inputSchema: {
       projectId: z.number().int(),
       projectKey: z.string().regex(/^[A-Z][A-Z0-9]+$/).describe("Jira project key, e.g. PROJ"),
       dryRun: z.boolean().default(true),
-      limit: z.number().int().min(1).optional().describe("Send at most this many issues; useful to test with one"),
+      limit: z.number().int().min(1).optional().describe("Send at most this many new issues; useful to test with one"),
+      update: z.boolean().default(false).describe("Also update issues already linked to a requirement or story"),
     },
   },
-  async ({ projectId, projectKey, dryRun, limit }) => {
+  async ({ projectId, projectKey, dryRun, limit, update }) => {
     const db = await loadDb();
     const p = db.projects.find((x) => x.id === projectId);
     if (!p) return text(`Project ${projectId} not found.`);
@@ -501,29 +511,29 @@ server.registerTool(
         })),
     ];
     const pending = items.filter((i) => !i.ref.jiraKey);
+    const linked = items.filter((i) => i.ref.jiraKey);
     const batch = pending.slice(0, limit ?? pending.length);
-    const skippedAlreadySent = items.length - pending.length;
+    const skippedAlreadySent = linked.length;
 
     if (dryRun) {
       return text({
         dryRun: true,
         count: batch.length,
         skippedAlreadySent,
+        updates: update ? linked.map((i) => ({ key: i.ref.jiraKey, summary: i.summary })) : [],
         issues: batch.map((i) => ({ source: { kind: i.kind, id: i.ref.id }, issueType: i.issueType, project: projectKey, summary: i.summary, priority: i.priority, description: i.description })),
       });
     }
 
-    const site = process.env.JIRA_SITE;
-    const email = process.env.JIRA_EMAIL;
-    const token = process.env.JIRA_API_TOKEN;
-    if (!site || !email || !token) return text("Missing JIRA_SITE, JIRA_EMAIL or JIRA_API_TOKEN in the environment.");
-    const auth = "Basic " + Buffer.from(`${email}:${token}`).toString("base64");
+    const jira = jiraAuth();
+    if (typeof jira === "string") return text(jira);
+    const headers = { Authorization: jira.auth, "Content-Type": "application/json", Accept: "application/json" };
 
     const created: { source: string; key: string }[] = [];
     for (const i of batch) {
-      const res = await fetch(`${site}/rest/api/3/issue`, {
+      const res = await fetch(`${jira.site}/rest/api/3/issue`, {
         method: "POST",
-        headers: { Authorization: auth, "Content-Type": "application/json", Accept: "application/json" },
+        headers,
         body: JSON.stringify({
           fields: {
             project: { key: projectKey },
@@ -542,8 +552,82 @@ server.registerTool(
       i.ref.jiraKey = key;
       created.push({ source: `${i.kind} ${i.ref.id}`, key });
     }
+
+    const updated: string[] = [];
+    if (update) {
+      for (const i of linked) {
+        const res = await fetch(`${jira.site}/rest/api/3/issue/${i.ref.jiraKey}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({
+            fields: {
+              summary: i.summary,
+              description: adfDoc(i.description),
+              ...(i.priority ? { priority: { name: i.priority } } : {}),
+            },
+          }),
+        });
+        if (!res.ok) {
+          await saveDb(db);
+          return text({ error: `Jira answered ${res.status} updating ${i.ref.jiraKey}`, detail: (await res.text()).slice(0, 500), created, updated });
+        }
+        updated.push(i.ref.jiraKey as string);
+      }
+    }
     await saveDb(db);
-    return text({ dryRun: false, created, skippedAlreadySent });
+    return text({ dryRun: false, created, updated, skippedAlreadySent });
+  },
+);
+
+server.registerTool(
+  "sync_from_jira",
+  {
+    description: "Read the status of linked Jira issues and mark items done in Yeti when their Jira issue is done. Requirements become done; stories get all their criteria ticked. Read-only on Jira.",
+    inputSchema: { projectId: z.number().int() },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const jira = jiraAuth();
+    if (typeof jira === "string") return text(jira);
+
+    const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
+    const linkedStories = db.stories.filter((st) => st.projectId === p.id && st.jiraKey);
+    const completed: string[] = [];
+    const checked: string[] = [];
+
+    const fetchDone = async (key: string) => {
+      const res = await fetch(`${jira.site}/rest/api/3/issue/${key}?fields=status`, {
+        headers: { Authorization: jira.auth, Accept: "application/json" },
+      });
+      if (!res.ok) throw new Error(`Jira answered ${res.status} for ${key}`);
+      const body = await res.json();
+      return body.fields.status.statusCategory.key === "done";
+    };
+
+    try {
+      for (const r of linkedReqs) {
+        checked.push(r.jiraKey as string);
+        if (r.status !== "done" && (await fetchDone(r.jiraKey as string))) {
+          r.status = "done";
+          completed.push(`requirement ${r.id} (${r.jiraKey})`);
+        }
+      }
+      for (const st of linkedStories) {
+        checked.push(st.jiraKey as string);
+        const allTicked = st.acceptanceCriteria.every((_, i) => st.criteriaDone?.[i]);
+        if (!allTicked && (await fetchDone(st.jiraKey as string))) {
+          st.criteriaDone = st.acceptanceCriteria.map(() => true);
+          completed.push(`story ${st.id} (${st.jiraKey})`);
+        }
+      }
+    } catch (err) {
+      await saveDb(db);
+      return text({ error: (err as Error).message, checked, completed });
+    }
+    await saveDb(db);
+    return text({ checked: checked.length, completed });
   },
 );
 
