@@ -6,6 +6,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { renderDashboard, type ProjectView } from "./dashboard.js";
 
 // Data is stored in a local JSON file next to the project
 const here = dirname(fileURLToPath(import.meta.url));
@@ -876,6 +877,38 @@ server.registerTool(
     p.flows.splice(index, 1);
     await saveDb(db);
     return text(`Flow ${index} deleted. ${p.flows.length} flow(s) left.`);
+  },
+);
+
+server.registerTool(
+  "export_dashboard",
+  {
+    description: "Write a read-only HTML dashboard to data/exports/dashboard.html: phases, what is missing, musts covered by stories, RICE scores and flow diagrams. Open the file in a browser.",
+    inputSchema: { projectId: projectIdSchema },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const list = db.projects.filter((p) => projectId === undefined || p.id === projectId);
+    if (!list.length) return text(projectId === undefined ? "No projects yet." : `Project ${projectId} not found.`);
+    const views: ProjectView[] = list.map((p) => {
+      const reqs = db.requirements.filter((r) => r.projectId === p.id);
+      const covered = new Set(db.stories.filter((st) => st.projectId === p.id).flatMap((st) => st.requirementIds ?? []));
+      return {
+        id: p.id,
+        name: p.name,
+        closed: p.closed,
+        phases: [...PHASES],
+        currentIndex: p.closed ? PHASES.length : p.phase,
+        missing: p.closed ? [] : missingFor(db, p),
+        reqs: reqs.map((r) => ({ id: r.id, title: r.title, priority: r.priority, done: r.status === "done", covered: covered.has(r.id) })),
+        rice: p.rice,
+        flows: p.flows,
+      };
+    });
+    const file = join(dirname(DB_PATH), "exports", "dashboard.html");
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, renderDashboard(views, new Date().toISOString()), "utf8");
+    return text({ file, projects: views.length });
   },
 );
 

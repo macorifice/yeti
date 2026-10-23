@@ -31,6 +31,7 @@ Projects have a mode, chosen at creation:
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
 | `set_project_mode` | Switch a project between `strict` and `free` |
+| `export_dashboard` | Write a read-only HTML dashboard (phases, missing items, must coverage, RICE, flows) to `data/exports/dashboard.html` |
 | `project_summary` | Progress overview: requirements by priority and status, musts covered by stories, criteria done, RICE leader, Jira links, and what is missing to close |
 | `get_project` | Show phase, what is missing, and linked items |
 | `advance_phase` | Move to the next phase, or list what is missing |

@@ -41,6 +41,7 @@ assert.deepEqual(names, [
   "delete_user_story",
   "duplicate_project",
   "export_backlog",
+  "export_dashboard",
   "get_project",
   "import_requirements",
   "list_flows",
@@ -60,7 +61,7 @@ assert.deepEqual(names, [
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 29 tools");
+ok("exposes 30 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -482,6 +483,24 @@ const second = await openClient();
 assert.equal(JSON.parse(await second.call("get_project", { projectId: 1 })).name, "Legacy", "SQLite is the source after migration");
 await second.c.close();
 ok("legacy db.json is imported once into SQLite, which then becomes the source");
+
+// Read-only dashboard
+const dash = JSON.parse(await call("create_project", { name: "<b>Dash</b> & co", problem: "p", users: "u", goal: "g" }));
+const dMust = JSON.parse(await call("add_requirement", { title: "Covered must", description: "d", priority: "must", projectId: dash.id }));
+await call("add_requirement", { title: "Uncovered must", description: "d", priority: "must", projectId: dash.id });
+await call("add_user_story", { persona: "a", goal: "b", benefit: "c", acceptanceCriteria: ["x"], requirementIds: [dMust.id], projectId: dash.id });
+await call("prioritize_rice", { items: [{ name: "Idea", reach: 5, impact: 1, confidence: 1, effort: 1 }], projectId: dash.id });
+await call("map_user_flow", { name: "Flow", steps: [{ label: "Start" }, { label: "End" }], projectId: dash.id });
+const dashFile = JSON.parse(await call("export_dashboard", { projectId: dash.id })).file;
+const html = readFileSync(dashFile, "utf8");
+assert.match(html, /&lt;b&gt;Dash&lt;\/b&gt; &amp; co/, "project name is escaped");
+assert.doesNotMatch(html, /<b>Dash<\/b>/, "no raw HTML from user input");
+assert.match(html, /Covered must<\/td><td>Open<\/td><td class="ok">Covered/);
+assert.match(html, /Uncovered must<\/td><td>Open<\/td><td class="warn">Not covered/);
+assert.match(html, /<pre class="mermaid">flowchart TD/);
+assert.match(html, /Idea/);
+assert.match(await call("export_dashboard", { projectId: 9999 }), /not found/);
+ok("export_dashboard writes escaped HTML with coverage, RICE and flows, read-only");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
