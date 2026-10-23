@@ -32,6 +32,7 @@ type Story = {
   goal: string;
   benefit: string;
   acceptanceCriteria: string[];
+  criteriaDone?: boolean[]; // same order as acceptanceCriteria
   createdAt: string;
 };
 
@@ -219,6 +220,29 @@ server.registerTool(
     if (db.stories.length === before) return text(`User story ${id} not found.`);
     await saveDb(db);
     return text(`User story ${id} deleted.`);
+  },
+);
+
+server.registerTool(
+  "set_criterion_status",
+  {
+    description: "Mark one acceptance criterion of a user story as done or not done. The index is 0-based, in the order of the criteria.",
+    inputSchema: {
+      storyId: z.number().int(),
+      index: z.number().int().min(0),
+      done: z.boolean(),
+    },
+  },
+  async ({ storyId, index, done }) => {
+    const db = await loadDb();
+    const st = db.stories.find((x) => x.id === storyId);
+    if (!st) return text(`User story ${storyId} not found.`);
+    if (index >= st.acceptanceCriteria.length) return text(`Criterion ${index} out of range: the story has ${st.acceptanceCriteria.length}.`);
+    const flags = st.acceptanceCriteria.map((_, i) => st.criteriaDone?.[i] ?? false);
+    flags[index] = done;
+    st.criteriaDone = flags;
+    await saveDb(db);
+    return text(st);
   },
 );
 
@@ -477,9 +501,10 @@ server.registerTool(
     inputSchema: {
       projectId: z.number().int(),
       format: z.enum(["markdown", "csv"]).default("markdown"),
+      save: z.boolean().default(false).describe("Also write the file to data/exports/"),
     },
   },
-  async ({ projectId, format }) => {
+  async ({ projectId, format, save }) => {
     const db = await loadDb();
     const p = db.projects.find((x) => x.id === projectId);
     if (!p) return text(`Project ${projectId} not found.`);
@@ -488,6 +513,15 @@ server.registerTool(
       .filter((r) => r.projectId === p.id)
       .sort((a, b) => order[a.priority] - order[b.priority]);
     const stories = db.stories.filter((x) => x.projectId === p.id);
+
+    const finish = async (content: string, ext: "csv" | "markdown") => {
+      if (!save) return text(content);
+      const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `project-${p.id}`;
+      const file = join(dirname(DB_PATH), "exports", `${slug}.${ext === "csv" ? "csv" : "md"}`);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, content, "utf8");
+      return text(`Saved to ${file}`);
+    };
 
     if (format === "csv") {
       const cell = (v: unknown) => {
@@ -499,10 +533,10 @@ server.registerTool(
         rows.push([ "requirement", r.id, r.title, r.priority, r.status, r.description ].map(cell).join(","));
       }
       for (const st of stories) {
-        const details = `so that ${st.benefit}; criteria: ${st.acceptanceCriteria.join(" | ")}`;
+        const details = `so that ${st.benefit}; criteria: ${st.acceptanceCriteria.map((c, i) => (st.criteriaDone?.[i] ? `[x] ${c}` : c)).join(" | ")}`;
         rows.push([ "story", st.id, `As a ${st.persona}, I want ${st.goal}`, "", "", details ].map(cell).join(","));
       }
-      return text(rows.join("\n"));
+      return finish(rows.join("\n"), "csv");
     }
 
     const lines = [
@@ -526,12 +560,12 @@ server.registerTool(
             "",
             `As a ${st.persona}, I want ${st.goal}, so that ${st.benefit}.`,
             "",
-            ...st.acceptanceCriteria.map((c) => `- [ ] ${c}`),
+            ...st.acceptanceCriteria.map((c, i) => `- [${st.criteriaDone?.[i] ? "x" : " "}] ${c}`),
             "",
           ])
         : ["_None yet._"]),
     ];
-    return text(lines.join("\n"));
+    return finish(lines.join("\n"), "markdown");
   },
 );
 

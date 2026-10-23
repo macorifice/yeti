@@ -5,6 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 
 const dir = mkdtempSync(join(tmpdir(), "pd-mcp-"));
 const transport = new StdioClientTransport({
@@ -40,10 +41,11 @@ assert.deepEqual(names, [
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
+  "set_criterion_status",
   "set_requirement_status",
   "update_requirement",
 ]);
-ok("exposes 14 tools");
+ok("exposes 15 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -229,6 +231,28 @@ ok("delete_requirement removes the requirement");
 assert.match(await call("delete_user_story", { id: linkedStoryId }), /deleted/);
 assert.match(await call("delete_user_story", { id: linkedStoryId }), /not found/);
 ok("delete_user_story removes the story, and reports unknown ids");
+
+// Acceptance criteria status and file export
+const crit = { id: Number((await call("add_user_story", { persona: "a", goal: "check", benefit: "c", acceptanceCriteria: ["first", "second"] })).match(/^Story (\d+)/)[1]) };
+assert.match(await call("set_criterion_status", { storyId: crit.id, index: 1, done: true }), /criteriaDone/);
+assert.match(await call("set_criterion_status", { storyId: crit.id, index: 5, done: true }), /out of range/);
+assert.match(await call("set_criterion_status", { storyId: 9999, index: 0, done: true }), /not found/);
+const critProject = JSON.parse(await call("create_project", { name: "Criteria", problem: "p", users: "u", goal: "g" }));
+const linked = Number((await call("add_user_story", { persona: "a", goal: "check", benefit: "c", acceptanceCriteria: ["first", "second"], projectId: critProject.id })).match(/^Story (\d+)/)[1]);
+await call("set_criterion_status", { storyId: linked, index: 1, done: true });
+const critExport = await call("export_backlog", { projectId: critProject.id });
+assert.match(critExport, /- \[ \] first/);
+assert.match(critExport, /- \[x\] second/);
+ok("set_criterion_status marks criteria and reports bad input");
+
+const crProject = JSON.parse(await call("create_project", { name: "Export File", problem: "p", users: "u", goal: "g" }));
+await call("add_user_story", { persona: "a", goal: "files", benefit: "b", acceptanceCriteria: ["x", "y"], projectId: crProject.id });
+const saved = await call("export_backlog", { projectId: crProject.id, format: "csv", save: true });
+const savedPath = saved.replace("Saved to ", "");
+assert.match(saved, /^Saved to .*export-file\.csv$/);
+assert.ok(existsSync(savedPath));
+assert.match(readFileSync(savedPath, "utf8"), /^type,id,title/);
+ok("export_backlog with save writes data/exports/<project>.<ext>");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
