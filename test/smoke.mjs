@@ -512,5 +512,9 @@ assert.ok(Array.isArray(await apiRes.json()));
 assert.equal(JSON.parse(await call("open_dashboard")).url, opened.url, "a second call reuses the running dashboard");
 ok("open_dashboard returns a working local address and reuses it");
 
+// The published command must start with a node shebang, or "npx yeti-mcp" runs it as a shell script
+assert.equal(readFileSync("dist/index.js", "utf8").split("\n")[0], "#!/usr/bin/env node");
+ok("dist/index.js starts with a node shebang");
+
 await client.close();
 console.log(`\n${passed} checks passed`);
