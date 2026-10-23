@@ -165,6 +165,64 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_requirement",
+  {
+    description: "Change a requirement's title, description or priority. Only the fields you pass are changed.",
+    inputSchema: {
+      id: z.number().int(),
+      title: z.string().min(3).optional(),
+      description: z.string().optional(),
+      priority: z.enum(["must", "should", "could", "wont"]).optional(),
+    },
+  },
+  async ({ id, title, description, priority }) => {
+    const db = await loadDb();
+    const req = db.requirements.find((r) => r.id === id);
+    if (!req) return text(`Requirement ${id} not found.`);
+    if (title !== undefined) req.title = title;
+    if (description !== undefined) req.description = description;
+    if (priority !== undefined) req.priority = priority;
+    await saveDb(db);
+    return text(req);
+  },
+);
+
+server.registerTool(
+  "delete_requirement",
+  {
+    description: "Delete a requirement. It is also removed from the requirementIds of any user story that covered it.",
+    inputSchema: { id: z.number().int() },
+  },
+  async ({ id }) => {
+    const db = await loadDb();
+    const before = db.requirements.length;
+    db.requirements = db.requirements.filter((r) => r.id !== id);
+    if (db.requirements.length === before) return text(`Requirement ${id} not found.`);
+    for (const s of db.stories) {
+      if (s.requirementIds) s.requirementIds = s.requirementIds.filter((rid) => rid !== id);
+    }
+    await saveDb(db);
+    return text(`Requirement ${id} deleted.`);
+  },
+);
+
+server.registerTool(
+  "delete_user_story",
+  {
+    description: "Delete a user story.",
+    inputSchema: { id: z.number().int() },
+  },
+  async ({ id }) => {
+    const db = await loadDb();
+    const before = db.stories.length;
+    db.stories = db.stories.filter((s) => s.id !== id);
+    if (db.stories.length === before) return text(`User story ${id} not found.`);
+    await saveDb(db);
+    return text(`User story ${id} deleted.`);
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
@@ -312,6 +370,8 @@ server.registerTool(
     db.stories.push(story);
     await saveDb(db);
     const md = [
+      `Story ${story.id}`,
+      "",
       `**As a** ${persona}, **I want** ${goal}, **so that** ${benefit}.`,
       "",
       "Acceptance criteria:",
