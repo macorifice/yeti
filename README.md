@@ -187,7 +187,7 @@ The test starts the server on a temporary database and checks every tool and the
 
 ## Status
 
-Early version (0.2.0). Projects can run in `strict` or `free` mode.
+Stable since 1.0.0. The tools, their inputs and the data format are covered by semantic versioning: breaking changes will come with a new major version.
 
 ## License
 
