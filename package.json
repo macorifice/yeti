@@ -1,6 +1,6 @@
 {
   "name": "yeti-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "mcpName": "io.github.macorifice/yeti",
   "description": "An MCP server that guides product design work through mandatory phases: discovery, requirements, prioritization, flows and verification.",
   "main": "dist/index.js",
