@@ -389,6 +389,67 @@ server.registerTool(
   },
 );
 
+// Parses CSV text into rows, handling quoted fields with commas, quotes and newlines
+function parseCsv(input: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (ch === '"' && input[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { row.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && input[i + 1] === "\n") i++;
+      row.push(field); rows.push(row); row = []; field = "";
+    } else field += ch;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c !== ""));
+}
+
+server.registerTool(
+  "import_requirements",
+  {
+    description: "Import requirements from CSV text, in the format produced by export_backlog (type,id,title,priority,status,details). Only rows with type 'requirement' are imported; stories are skipped.",
+    inputSchema: {
+      projectId: z.number().int(),
+      csv: z.string().min(1),
+    },
+  },
+  async ({ projectId, csv }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const [header, ...rows] = parseCsv(csv);
+    const col = (name: string) => header.indexOf(name);
+    const iType = col("type"), iTitle = col("title"), iPriority = col("priority"), iDetails = col("details");
+    if (iType < 0 || iTitle < 0) return text("CSV header must include 'type' and 'title' columns.");
+    const priorities = ["must", "should", "could", "wont"];
+    let imported = 0, skipped = 0;
+    for (const r of rows) {
+      if (r[iType] !== "requirement" || !r[iTitle]) { skipped++; continue; }
+      const priority = priorities.includes(r[iPriority]) ? (r[iPriority] as Priority) : "should";
+      db.requirements.push({
+        id: db.nextId++,
+        projectId: p.id,
+        title: r[iTitle],
+        description: iDetails >= 0 ? r[iDetails] ?? "" : "",
+        priority,
+        status: "open",
+        createdAt: new Date().toISOString(),
+      });
+      imported++;
+    }
+    await saveDb(db);
+    return text({ imported, skipped });
+  },
+);
+
 server.registerTool(
   "get_project",
   {

@@ -39,6 +39,7 @@ assert.deepEqual(names, [
   "duplicate_project",
   "export_backlog",
   "get_project",
+  "import_requirements",
   "list_projects",
   "list_requirements",
   "map_user_flow",
@@ -50,7 +51,7 @@ assert.deepEqual(names, [
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 20 tools");
+ok("exposes 21 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -311,6 +312,29 @@ assert.equal(copiedReq.status, "open", "status is reset");
 assert.match(await call("list_requirements", { projectId: src.id }), /"status": "done"/, "source is unchanged");
 assert.match(await call("duplicate_project", { projectId: 9999, name: "x y" }), /not found/);
 ok("duplicate_project copies items as open, without touching the source");
+
+// Import requirements from CSV, round-trip with the export
+const origin = JSON.parse(await call("create_project", { name: "CSV origin", problem: "p", users: "u", goal: "g" }));
+await call("add_requirement", { title: "Prezzo, IVA incl.", description: "Say \"ciao\"\nsecond line", priority: "must", projectId: origin.id });
+await call("add_requirement", { title: "Logo", description: "d", priority: "could", projectId: origin.id });
+const csvText = await call("export_backlog", { projectId: origin.id, format: "csv" });
+const target = JSON.parse(await call("create_project", { name: "CSV target", problem: "p", users: "u", goal: "g" }));
+const result = JSON.parse(await call("import_requirements", { projectId: target.id, csv: csvText }));
+assert.deepEqual(result, { imported: 2, skipped: 0 });
+const imported = JSON.parse(await call("list_requirements", { projectId: target.id }));
+assert.equal(imported[0].title, "Prezzo, IVA incl.", "commas survive");
+assert.equal(imported[0].description, 'Say "ciao"\nsecond line', "quotes and newlines survive");
+assert.equal(imported[0].priority, "must");
+assert.equal(imported[1].priority, "could");
+ok("import_requirements reads back exported CSV, quotes and newlines included");
+
+const mixed = "type,id,title,priority,status,details\nstory,1,As a x,,,\nrequirement,2,Solo,bogus,open,dd";
+const partial = JSON.parse(await call("import_requirements", { projectId: target.id, csv: mixed }));
+assert.deepEqual(partial, { imported: 1, skipped: 1 });
+assert.equal(JSON.parse(await call("list_requirements", { projectId: target.id })).find((r) => r.title === "Solo").priority, "should", "unknown priority falls back to should");
+assert.match(await call("import_requirements", { projectId: target.id, csv: "a,b\n1,2" }), /must include/);
+assert.match(await call("import_requirements", { projectId: 9999, csv: mixed }), /not found/);
+ok("import_requirements skips stories, falls back on bad priority, and checks the header");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
