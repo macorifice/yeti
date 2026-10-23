@@ -176,8 +176,8 @@ assert.ok(md.indexOf("Must, with comma") < md.indexOf("Could item"), "must befor
 assert.match(md, /### Story \d+/);
 const csv = await call("export_backlog", { projectId: ex.id, format: "csv" });
 const lines = csv.split("\n");
-assert.equal(lines[0], "type,id,title,priority,status,details");
-assert.match(lines[1], /^requirement,\d+,"Must, with comma",must,open,"Say ""hi"""$/);
+assert.equal(lines[0], "type,id,title,priority,status,details,persona,goal,benefit,criteria");
+assert.match(lines[1], /^requirement,\d+,"Must, with comma",must,open,"Say ""hi""",,,,$/);
 assert.match(lines[3], /^story,/);
 assert.match(await call("export_backlog", { projectId: 999 }), /not found/);
 ok("export_backlog exports Markdown and CSV with correct escaping");
@@ -389,6 +389,17 @@ assert.equal(summary.jiraLinked, 0);
 assert.ok(summary.missing.length >= 0);
 assert.match(await call("project_summary", { projectId: 9999 }), /not found/);
 ok("project_summary reports requirements, musts, criteria, RICE leader and what is missing");
+
+// CSV round trip with stories
+const rt = JSON.parse(await call("create_project", { name: "RT source", problem: "p", users: "u", goal: "g" }));
+await call("add_user_story", { persona: "cliente", goal: "pagare", benefit: "chiudere", acceptanceCriteria: ["Ricevuta", "Email"], projectId: rt.id });
+const rtCsv = await call("export_backlog", { projectId: rt.id, format: "csv" });
+const rtTarget = JSON.parse(await call("create_project", { name: "RT target", problem: "p", users: "u", goal: "g" }));
+assert.deepEqual(JSON.parse(await call("import_requirements", { projectId: rtTarget.id, csv: rtCsv })), { imported: 1, skipped: 0 });
+const rtInfo = JSON.parse(await call("get_project", { projectId: rtTarget.id }));
+assert.equal(rtInfo.storyCount, 1);
+assert.match(await call("export_backlog", { projectId: rtTarget.id }), /- \[ \] Ricevuta/);
+ok("CSV round trip brings user stories back with their criteria");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

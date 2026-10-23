@@ -419,7 +419,7 @@ function parseCsv(input: string): string[][] {
 server.registerTool(
   "import_requirements",
   {
-    description: "Import requirements from CSV text, in the format produced by export_backlog (type,id,title,priority,status,details). Only rows with type 'requirement' are imported; stories are skipped.",
+    description: "Import requirements and user stories from CSV text, in the format produced by export_backlog. Requirement rows need type and title; story rows need persona, goal, benefit and criteria (separated by ' | '). Story-to-requirement links are not restored.",
     inputSchema: {
       projectId: z.number().int(),
       csv: z.string().min(1),
@@ -432,22 +432,41 @@ server.registerTool(
     const [header, ...rows] = parseCsv(csv);
     const col = (name: string) => header.indexOf(name);
     const iType = col("type"), iTitle = col("title"), iPriority = col("priority"), iDetails = col("details");
+    const iPersona = col("persona"), iGoal = col("goal"), iBenefit = col("benefit"), iCriteria = col("criteria");
     if (iType < 0 || iTitle < 0) return text("CSV header must include 'type' and 'title' columns.");
     const priorities = ["must", "should", "could", "wont"];
     let imported = 0, skipped = 0;
     for (const r of rows) {
-      if (r[iType] !== "requirement" || !r[iTitle]) { skipped++; continue; }
-      const priority = priorities.includes(r[iPriority]) ? (r[iPriority] as Priority) : "should";
-      db.requirements.push({
-        id: db.nextId++,
-        projectId: p.id,
-        title: r[iTitle],
-        description: iDetails >= 0 ? r[iDetails] ?? "" : "",
-        priority,
-        status: "open",
-        createdAt: new Date().toISOString(),
-      });
-      imported++;
+      if (r[iType] === "requirement" && r[iTitle]) {
+        const priority = priorities.includes(r[iPriority]) ? (r[iPriority] as Priority) : "should";
+        db.requirements.push({
+          id: db.nextId++,
+          projectId: p.id,
+          title: r[iTitle],
+          description: iDetails >= 0 ? r[iDetails] ?? "" : "",
+          priority,
+          status: "open",
+          createdAt: new Date().toISOString(),
+        });
+        imported++;
+      } else if (
+        r[iType] === "story" &&
+        iPersona >= 0 && iGoal >= 0 && iBenefit >= 0 && iCriteria >= 0 &&
+        r[iPersona] && r[iGoal] && r[iBenefit] && r[iCriteria]
+      ) {
+        db.stories.push({
+          id: db.nextId++,
+          projectId: p.id,
+          persona: r[iPersona],
+          goal: r[iGoal],
+          benefit: r[iBenefit],
+          acceptanceCriteria: r[iCriteria].split(" | ").filter(Boolean),
+          createdAt: new Date().toISOString(),
+        });
+        imported++;
+      } else {
+        skipped++;
+      }
     }
     await saveDb(db);
     return text({ imported, skipped });
@@ -980,13 +999,13 @@ server.registerTool(
         const str = String(v ?? "");
         return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
       };
-      const rows = [["type", "id", "title", "priority", "status", "details"].join(",")];
+      const rows = [["type", "id", "title", "priority", "status", "details", "persona", "goal", "benefit", "criteria"].join(",")];
       for (const r of reqs) {
-        rows.push([ "requirement", r.id, r.title, r.priority, r.status, r.description ].map(cell).join(","));
+        rows.push([ "requirement", r.id, r.title, r.priority, r.status, r.description, "", "", "", "" ].map(cell).join(","));
       }
       for (const st of stories) {
         const details = `so that ${st.benefit}; criteria: ${st.acceptanceCriteria.map((c, i) => (st.criteriaDone?.[i] ? `[x] ${c}` : c)).join(" | ")}`;
-        rows.push([ "story", st.id, `As a ${st.persona}, I want ${st.goal}`, "", "", details ].map(cell).join(","));
+        rows.push([ "story", st.id, `As a ${st.persona}, I want ${st.goal}`, "", "", details, st.persona, st.goal, st.benefit, st.acceptanceCriteria.join(" | ") ].map(cell).join(","));
       }
       return finish(rows.join("\n"), "csv");
     }
