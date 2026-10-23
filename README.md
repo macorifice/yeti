@@ -151,7 +151,7 @@ Without these variables, `push_to_jira` refuses to send and tells you which one 
 Data is stored in SQLite, in `data/yeti.sqlite` inside the project folder. Earlier versions used `data/db.json`: it is imported automatically the first time the new version runs, and then left untouched. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
 
 ```json
-"env": { "PRODUCT_DESIGN_DB": "/absolute/path/to/db.json" }
+"env": { "PRODUCT_DESIGN_DB": "/absolute/path/to/yeti.sqlite" }
 ```
 
 ## Test
