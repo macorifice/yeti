@@ -813,6 +813,26 @@ server.registerTool(
 );
 
 server.registerTool(
+  "delete_flow",
+  {
+    description: "Delete one saved flow diagram from a project, by the index shown by list_flows.",
+    inputSchema: {
+      projectId: z.number().int(),
+      index: z.number().int().min(0),
+    },
+  },
+  async ({ projectId, index }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    if (index >= p.flows.length) return text(`Flow ${index} not found: the project has ${p.flows.length}.`);
+    p.flows.splice(index, 1);
+    await saveDb(db);
+    return text(`Flow ${index} deleted. ${p.flows.length} flow(s) left.`);
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
