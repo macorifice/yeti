@@ -24,7 +24,7 @@ Projects have a mode, chosen at creation:
 | `create_project` | Start a project in the discovery phase, in `strict` or `free` mode |
 | `list_projects` | List projects with id, name, phase and mode; archived ones are hidden unless `includeArchived` is set |
 | `update_project` | Change a project's name, problem, users or goal |
-| `push_to_jira` | Preview the Jira issues for a project (Task per requirement, Story per user story). Dry-run only for now |
+| `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; needs `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN`; `limit` sends a subset; items already sent are skipped |
 | `search_items` | Search requirements and stories by text, optionally within one project |
 | `import_requirements` | Import requirements from CSV in the `export_backlog` format; stories are skipped |
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |

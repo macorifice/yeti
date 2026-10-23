@@ -11,7 +11,8 @@ const dir = mkdtempSync(join(tmpdir(), "pd-mcp-"));
 const transport = new StdioClientTransport({
   command: "node",
   args: ["dist/index.js"],
-  env: { ...process.env, PRODUCT_DESIGN_DB: join(dir, "db.json") },
+  // Jira variables are blanked so tests never reach a real Jira site
+  env: { ...process.env, PRODUCT_DESIGN_DB: join(dir, "db.json"), JIRA_SITE: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" },
 });
 const client = new Client({ name: "smoke", version: "0.0.1" });
 await client.connect(transport);
@@ -352,9 +353,12 @@ assert.equal(jiraStory.issueType, "Story");
 assert.match(jiraStory.description, /- Blocca dopo 5 errori/);
 ok("push_to_jira previews one Task per requirement and one Story per user story");
 
-assert.match(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", dryRun: false }), /not available yet/);
+assert.match(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", dryRun: false }), /Missing JIRA_SITE/);
+const limited = JSON.parse(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", limit: 1 }));
+assert.equal(limited.count, 1, "limit applies to the preview");
 assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
-ok("push_to_jira refuses real sends for now and reports unknown projects");
+assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
+ok("push_to_jira reports missing credentials and unknown projects, without sending");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
