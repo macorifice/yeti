@@ -44,6 +44,7 @@ assert.deepEqual(names, [
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
+  "push_to_jira",
   "search_items",
   "set_criterion_status",
   "set_project_mode",
@@ -51,7 +52,7 @@ assert.deepEqual(names, [
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 21 tools");
+ok("exposes 22 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -335,6 +336,25 @@ assert.equal(JSON.parse(await call("list_requirements", { projectId: target.id }
 assert.match(await call("import_requirements", { projectId: target.id, csv: "a,b\n1,2" }), /must include/);
 assert.match(await call("import_requirements", { projectId: 9999, csv: mixed }), /not found/);
 ok("import_requirements skips stories, falls back on bad priority, and checks the header");
+
+// Jira dry-run
+const jp = JSON.parse(await call("create_project", { name: "Jira preview", problem: "p", users: "u", goal: "g" }));
+const jr = JSON.parse(await call("add_requirement", { title: "Login sicuro", description: "Accesso con 2FA", priority: "must", projectId: jp.id }));
+await call("add_user_story", { persona: "cliente", goal: "accedere", benefit: "vedere i preventivi", acceptanceCriteria: ["Richiede il codice", "Blocca dopo 5 errori"], requirementIds: [jr.id], projectId: jp.id });
+const preview = JSON.parse(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ" }));
+assert.equal(preview.dryRun, true);
+assert.equal(preview.count, 2);
+const [jiraTask, jiraStory] = preview.issues;
+assert.equal(jiraTask.issueType, "Task");
+assert.equal(jiraTask.priority, "Highest", "must maps to Highest");
+assert.equal(jiraTask.project, "PROJ");
+assert.equal(jiraStory.issueType, "Story");
+assert.match(jiraStory.description, /- Blocca dopo 5 errori/);
+ok("push_to_jira previews one Task per requirement and one Story per user story");
+
+assert.match(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", dryRun: false }), /not available yet/);
+assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
+ok("push_to_jira refuses real sends for now and reports unknown projects");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

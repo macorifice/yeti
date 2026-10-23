@@ -450,6 +450,51 @@ server.registerTool(
   },
 );
 
+// MoSCoW priority mapped to Jira's default priority names
+const JIRA_PRIORITY: Record<Priority, string> = { must: "Highest", should: "High", could: "Medium", wont: "Low" };
+
+server.registerTool(
+  "push_to_jira",
+  {
+    description: "Plan the Jira issues for a project: one Task per requirement and one Story per user story. Only dry-run is available for now: it lists what would be created and writes nothing.",
+    inputSchema: {
+      projectId: z.number().int(),
+      projectKey: z.string().regex(/^[A-Z][A-Z0-9]+$/).describe("Jira project key, e.g. PROJ"),
+      dryRun: z.boolean().default(true),
+    },
+  },
+  async ({ projectId, projectKey, dryRun }) => {
+    if (!dryRun) return text("Sending to Jira is not available yet. Use dryRun: true to preview the issues.");
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+
+    const plan = [
+      ...db.requirements
+        .filter((r) => r.projectId === p.id)
+        .map((r) => ({
+          source: { kind: "requirement", id: r.id },
+          issueType: "Task",
+          project: projectKey,
+          summary: r.title,
+          priority: JIRA_PRIORITY[r.priority],
+          description: r.description,
+        })),
+      ...db.stories
+        .filter((st) => st.projectId === p.id)
+        .map((st) => ({
+          source: { kind: "story", id: st.id },
+          issueType: "Story",
+          project: projectKey,
+          summary: `As a ${st.persona}, I want ${st.goal}`,
+          priority: undefined,
+          description: [`So that ${st.benefit}.`, "", "Acceptance criteria:", ...st.acceptanceCriteria.map((c) => `- ${c}`)].join("\n"),
+        })),
+    ];
+    return text({ dryRun: true, count: plan.length, issues: plan });
+  },
+);
+
 server.registerTool(
   "get_project",
   {
