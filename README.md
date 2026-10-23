@@ -40,6 +40,8 @@ Projects have a mode, chosen at creation:
 | `update_requirement` | Change a requirement's title, description or priority |
 | `delete_requirement` | Delete a requirement and unlink it from stories |
 | `set_criterion_status` | Mark one acceptance criterion of a user story as done or not done |
+| `list_stories` | List user stories with their ids, links, criteria state and Jira key |
+| `delete_project` | Permanently delete a project and its items. Requires `confirm: true`; Jira issues are not touched |
 | `delete_user_story` | Delete a user story |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
 | `add_user_story` | Create a user story with acceptance criteria, optionally linked to requirements (`requirementIds`) |

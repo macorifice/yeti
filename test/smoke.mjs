@@ -35,6 +35,7 @@ assert.deepEqual(names, [
   "advance_phase",
   "archive_project",
   "create_project",
+  "delete_project",
   "delete_requirement",
   "delete_user_story",
   "duplicate_project",
@@ -43,6 +44,7 @@ assert.deepEqual(names, [
   "import_requirements",
   "list_projects",
   "list_requirements",
+  "list_stories",
   "map_user_flow",
   "prioritize_rice",
   "project_summary",
@@ -55,7 +57,7 @@ assert.deepEqual(names, [
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 24 tools");
+ok("exposes 26 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -400,6 +402,26 @@ const rtInfo = JSON.parse(await call("get_project", { projectId: rtTarget.id }))
 assert.equal(rtInfo.storyCount, 1);
 assert.match(await call("export_backlog", { projectId: rtTarget.id }), /- \[ \] Ricevuta/);
 ok("CSV round trip brings user stories back with their criteria");
+
+// List stories and delete a project
+const dp = JSON.parse(await call("create_project", { name: "To delete", problem: "p", users: "u", goal: "g" }));
+const dpReq = JSON.parse(await call("add_requirement", { title: "Doomed requirement", description: "d", priority: "must", projectId: dp.id }));
+const dpStory = await call("add_user_story", { persona: "x", goal: "y", benefit: "z", acceptanceCriteria: ["k"], requirementIds: [dpReq.id], projectId: dp.id });
+const dpStoryId = Number(dpStory.match(/^Story (\d+)/)[1]);
+const listed = JSON.parse(await call("list_stories", { projectId: dp.id }));
+assert.equal(listed.length, 1);
+assert.equal(listed[0].id, dpStoryId);
+assert.deepEqual(listed[0].requirementIds, [dpReq.id]);
+assert.equal(listed[0].criteria[0].done, false);
+ok("list_stories shows ids, links and criteria state");
+
+assert.match(await call("delete_project", { projectId: dp.id, confirm: false }), /not confirmed/);
+assert.equal(JSON.parse(await call("get_project", { projectId: dp.id })).name, "To delete", "still there after refusal");
+assert.match(await call("delete_project", { projectId: dp.id, confirm: true }), /deleted, with 1 requirement\(s\) and 1 user story/);
+assert.match(await call("get_project", { projectId: dp.id }), /not found/);
+assert.match(await call("search_items", { query: "Doomed" }), /No items match/);
+assert.match(await call("list_stories", { projectId: dp.id }), /No user stories found/);
+ok("delete_project refuses without confirm and removes the project with its items");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
