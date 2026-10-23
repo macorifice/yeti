@@ -44,6 +44,7 @@ type Project = {
   goal: string;
   phase: number; // index into PHASES
   closed: boolean;
+  archived?: boolean; // hidden from list_projects unless asked for
   mode?: "strict" | "free"; // missing when created before modes existed: treated as strict
   rice: { name: string; score: number }[];
   flows: string[];
@@ -149,12 +150,13 @@ server.registerTool(
     description: "List projects with their id, name, phase and status. Use it to find a projectId.",
     inputSchema: {
       includeClosed: z.boolean().default(true).describe("Set to false to hide closed projects"),
+      includeArchived: z.boolean().default(false).describe("Set to true to also list archived projects"),
     },
   },
-  async ({ includeClosed }) => {
+  async ({ includeClosed, includeArchived }) => {
     const db = await loadDb();
     const projects = db.projects
-      .filter((p) => includeClosed || !p.closed)
+      .filter((p) => (includeClosed || !p.closed) && (includeArchived || !p.archived))
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -243,6 +245,44 @@ server.registerTool(
     st.criteriaDone = flags;
     await saveDb(db);
     return text(st);
+  },
+);
+
+server.registerTool(
+  "archive_project",
+  {
+    description: "Archive or unarchive a project. Archived projects are hidden from list_projects by default. Nothing is deleted.",
+    inputSchema: {
+      projectId: z.number().int(),
+      archived: z.boolean().default(true),
+    },
+  },
+  async ({ projectId, archived }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    p.archived = archived;
+    await saveDb(db);
+    return text(`Project ${projectId} ${archived ? "archived" : "unarchived"}.`);
+  },
+);
+
+server.registerTool(
+  "set_project_mode",
+  {
+    description: "Change a project's mode: 'strict' or 'free'. Applies from the next phase change.",
+    inputSchema: {
+      projectId: z.number().int(),
+      mode: z.enum(["strict", "free"]),
+    },
+  },
+  async ({ projectId, mode }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    p.mode = mode;
+    await saveDb(db);
+    return text({ id: p.id, name: p.name, mode });
   },
 );
 
