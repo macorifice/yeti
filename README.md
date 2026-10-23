@@ -10,7 +10,7 @@ It covers five phases, in order:
 2. **definition**: requirements (MoSCoW) and user stories
 3. **prioritization**: RICE scoring of ideas
 4. **flows**: Mermaid flow diagrams
-5. **verification**: all `must` requirements completed, then the project closes
+5. **verification**: every `must` requirement completed and covered by a user story, then the project closes
 
 Projects have a mode, chosen at creation:
 
@@ -22,15 +22,16 @@ Projects have a mode, chosen at creation:
 | Tool | What it does |
 | --- | --- |
 | `create_project` | Start a project in the discovery phase, in `strict` or `free` mode |
+| `list_projects` | List projects with id, name, phase and mode |
 | `get_project` | Show phase, what is missing, and linked items |
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
 | `list_requirements` | List requirements, filtered by priority, status or project |
 | `export_backlog` | Export a project backlog as Markdown or CSV |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
-| `add_user_story` | Create a user story with acceptance criteria |
+| `add_user_story` | Create a user story with acceptance criteria, optionally linked to requirements (`requirementIds`) |
 | `prioritize_rice` | Compute and sort RICE scores |
-| `map_user_flow` | Generate a Mermaid flow diagram, with Yes/No branches on decisions |
+| `map_user_flow` | Generate a Mermaid flow diagram, with Yes/No branches, `next` and `ends` |
 
 Requirements, stories, RICE scores and flows accept an optional `projectId` to link them to a project.
 
