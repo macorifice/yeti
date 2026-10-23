@@ -25,6 +25,7 @@ Projects have a mode, chosen at creation:
 | `list_projects` | List projects with id, name, phase and mode; archived ones are hidden unless `includeArchived` is set |
 | `update_project` | Change a project's name, problem, users or goal |
 | `search_items` | Search requirements and stories by text, optionally within one project |
+| `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
 | `set_project_mode` | Switch a project between `strict` and `free` |
 | `get_project` | Show phase, what is missing, and linked items |

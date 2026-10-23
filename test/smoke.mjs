@@ -36,6 +36,7 @@ assert.deepEqual(names, [
   "create_project",
   "delete_requirement",
   "delete_user_story",
+  "duplicate_project",
   "export_backlog",
   "get_project",
   "list_projects",
@@ -49,7 +50,7 @@ assert.deepEqual(names, [
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 19 tools");
+ok("exposes 20 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -291,6 +292,25 @@ assert.match(hitsAll, /"type": "story"/);
 assert.match(await call("search_items", { query: "fattur", projectId: 9999 }), /No items match/);
 assert.match(await call("search_items", { query: "zzzzqqq" }), /No items match/);
 ok("search_items finds requirements and stories, case-insensitive, by project");
+
+// Duplicate a project as a template
+const src = JSON.parse(await call("create_project", { name: "Template source", problem: "p", users: "u", goal: "g", mode: "free" }));
+const srcReq = JSON.parse(await call("add_requirement", { title: "Template must", description: "d", priority: "must", projectId: src.id }));
+await call("add_user_story", { persona: "a", goal: "use template", benefit: "b", acceptanceCriteria: ["x"], requirementIds: [srcReq.id], projectId: src.id });
+await call("set_requirement_status", { id: srcReq.id, status: "done" });
+const copy = JSON.parse(await call("duplicate_project", { projectId: src.id, name: "Template copy" }));
+assert.equal(copy.name, "Template copy");
+assert.equal(copy.mode, "free", "mode is copied");
+assert.equal(copy.phase, 0, "starts from discovery");
+const copyInfo = JSON.parse(await call("get_project", { projectId: copy.id }));
+assert.equal(copyInfo.requirementCount, 1);
+assert.equal(copyInfo.storyCount, 1);
+assert.match(await call("search_items", { query: "template must", projectId: copy.id }), /"type": "requirement"/);
+const copiedReq = JSON.parse(await call("list_requirements", { projectId: copy.id }))[0];
+assert.equal(copiedReq.status, "open", "status is reset");
+assert.match(await call("list_requirements", { projectId: src.id }), /"status": "done"/, "source is unchanged");
+assert.match(await call("duplicate_project", { projectId: 9999, name: "x y" }), /not found/);
+ok("duplicate_project copies items as open, without touching the source");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

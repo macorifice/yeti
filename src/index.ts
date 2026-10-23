@@ -338,6 +338,58 @@ server.registerTool(
 );
 
 server.registerTool(
+  "duplicate_project",
+  {
+    description: "Create a new project from an existing one, copying its requirements and user stories as open items. Useful as a template for a new client or product. Statuses and RICE scores are not copied.",
+    inputSchema: {
+      projectId: z.number().int(),
+      name: z.string().min(2),
+    },
+  },
+  async ({ projectId, name }) => {
+    const db = await loadDb();
+    const src = db.projects.find((x) => x.id === projectId);
+    if (!src) return text(`Project ${projectId} not found.`);
+    const copy: Project = {
+      id: db.nextId++,
+      name,
+      problem: src.problem,
+      users: src.users,
+      goal: src.goal,
+      mode: src.mode,
+      phase: 0,
+      closed: false,
+      rice: [],
+      flows: [],
+      createdAt: new Date().toISOString(),
+    };
+    db.projects.push(copy);
+
+    // Copy requirements, remembering the new id for each old one
+    const reqIdMap = new Map<number, number>();
+    for (const r of db.requirements.filter((x) => x.projectId === src.id)) {
+      const newId = db.nextId++;
+      reqIdMap.set(r.id, newId);
+      db.requirements.push({ ...r, id: newId, projectId: copy.id, status: "open", createdAt: new Date().toISOString() });
+    }
+    // Copy stories, pointing their requirementIds at the copied requirements
+    for (const st of db.stories.filter((x) => x.projectId === src.id)) {
+      const linked = (st.requirementIds ?? []).map((id) => reqIdMap.get(id)).filter((id): id is number => id !== undefined);
+      db.stories.push({
+        ...st,
+        id: db.nextId++,
+        projectId: copy.id,
+        requirementIds: linked.length ? linked : undefined,
+        criteriaDone: undefined,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    await saveDb(db);
+    return text(copy);
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
