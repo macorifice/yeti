@@ -55,7 +55,7 @@ Requirements, stories, RICE scores and flows accept an optional `projectId` to l
 
 ## Requirements
 
-- Node.js 18 or later
+- Node.js 22.13 or later (uses the built-in `node:sqlite` module)
 
 ## Install
 
@@ -118,7 +118,7 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 
 **Good to know**
 
-- Data is stored locally, in `data/db.json`. The content still passes through the chat, so do not put sensitive data in it.
+- Data is stored locally, in `data/yeti.sqlite`. The content still passes through the chat, so do not put sensitive data in it.
 - RICE scores are the numbers you enter. Yeti sorts them; it does not estimate them.
 
 ## Credentials
@@ -148,10 +148,10 @@ Without these variables, `push_to_jira` refuses to send and tells you which one 
 
 ## Data
 
-Data is stored in `data/db.json` inside the project folder. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
+Data is stored in SQLite, in `data/yeti.sqlite` inside the project folder. Earlier versions used `data/db.json`: it is imported automatically the first time the new version runs, and then left untouched. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
 
 ```json
-"env": { "PRODUCT_DESIGN_DB": "/absolute/path/to/db.json" }
+"env": { "PRODUCT_DESIGN_DB": "/absolute/path/to/yeti.sqlite" }
 ```
 
 ## Test
