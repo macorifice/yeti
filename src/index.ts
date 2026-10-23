@@ -3,6 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { renderDashboard, type ProjectView } from "./dashboard.js";
 import { startDashboard } from "./web.js";
 import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Priority, type Project, type Requirement, type Story } from "./store.js";
@@ -14,7 +16,9 @@ const text = (value: unknown) => ({
 const scoreRice = (i: { reach: number; impact: number; confidence: number; effort: number }) =>
   Math.round(((i.reach * i.impact * i.confidence) / i.effort) * 100) / 100;
 
-const server = new McpServer({ name: "yeti", version: "0.2.0" });
+// The version comes from package.json, so it cannot drift from the published one
+const { version } = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string };
+const server = new McpServer({ name: "yeti", version });
 
 const projectIdSchema = z.number().int().optional().describe("Id of the project to link this item to");
 
