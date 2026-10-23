@@ -114,6 +114,31 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 - Data is stored locally, in `data/db.json`. The content still passes through the chat, so do not put sensitive data in it.
 - RICE scores are the numbers you enter. Yeti sorts them; it does not estimate them.
 
+## Credentials
+
+Yeti works without any account. Only one tool talks to an external service:
+
+- **Everything else** (projects, requirements, stories, RICE, flows, verification, export, search) runs locally and needs no credentials.
+- **`push_to_jira`** creates issues in Jira. It needs three environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `JIRA_SITE` | Your Jira site, e.g. `https://your-team.atlassian.net` |
+| `JIRA_EMAIL` | The email of your Atlassian account |
+| `JIRA_API_TOKEN` | An API token created at [id.atlassian.com](https://id.atlassian.com) → Security → API tokens |
+
+Set them in your shell profile, for example in `~/.zshrc`:
+
+```bash
+export JIRA_SITE="https://your-team.atlassian.net"
+export JIRA_EMAIL="you@example.com"
+export JIRA_API_TOKEN="your-token-here"
+```
+
+Never put the token in the repository, in a config file you commit, or in a chat. If a token is exposed, revoke it in the same page and create a new one.
+
+Without these variables, `push_to_jira` refuses to send and tells you which one is missing. Dry-run previews work without them as well.
+
 ## Data
 
 Data is stored in `data/db.json` inside the project folder. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
