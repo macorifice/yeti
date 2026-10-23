@@ -718,6 +718,54 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_stories",
+  {
+    description: "List user stories, optionally for one project, with their ids, criteria state and Jira key. Use it to find a storyId.",
+    inputSchema: { projectId: projectIdSchema },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const stories = db.stories
+      .filter((st) => projectId === undefined || st.projectId === projectId)
+      .map((st) => ({
+        id: st.id,
+        projectId: st.projectId,
+        persona: st.persona,
+        goal: st.goal,
+        benefit: st.benefit,
+        requirementIds: st.requirementIds ?? [],
+        criteria: st.acceptanceCriteria.map((c, i) => ({ text: c, done: Boolean(st.criteriaDone?.[i]) })),
+        jiraKey: st.jiraKey,
+      }));
+    return text(stories.length ? stories : "No user stories found.");
+  },
+);
+
+server.registerTool(
+  "delete_project",
+  {
+    description: "Permanently delete a project with its requirements and user stories. Requires confirm: true. This cannot be undone; issues already created in Jira are not touched.",
+    inputSchema: {
+      projectId: z.number().int(),
+      confirm: z.boolean().describe("Must be true to delete"),
+    },
+  },
+  async ({ projectId, confirm }) => {
+    if (!confirm) return text("Deletion not confirmed. Pass confirm: true to delete the project permanently.");
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const reqCount = db.requirements.filter((r) => r.projectId === projectId).length;
+    const storyCount = db.stories.filter((st) => st.projectId === projectId).length;
+    db.projects = db.projects.filter((x) => x.id !== projectId);
+    db.requirements = db.requirements.filter((r) => r.projectId !== projectId);
+    db.stories = db.stories.filter((st) => st.projectId !== projectId);
+    await saveDb(db);
+    return text(`Project "${p.name}" deleted, with ${reqCount} requirement(s) and ${storyCount} user stor${storyCount === 1 ? "y" : "ies"}.`);
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
