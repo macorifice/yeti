@@ -1,10 +1,38 @@
 # Yeti
 
-Available on npm as [`yeti-mcp`](https://www.npmjs.com/package/yeti-mcp).
+[![npm](https://img.shields.io/npm/v/yeti-mcp)](https://www.npmjs.com/package/yeti-mcp) [![CI](https://github.com/macorifice/yeti/actions/workflows/ci.yml/badge.svg)](https://github.com/macorifice/yeti/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io) server that guides product design work through mandatory phases, so an AI assistant like Claude can run a project from problem to verified scope.
+An [MCP](https://modelcontextprotocol.io) server for product design with Claude. It takes a project from the problem to a verified scope: requirements, user stories, RICE priorities and flow diagrams. Then it sends the work to Jira.
 
-It covers five phases, in order:
+![The Yeti dashboard: phases, what is missing to move on, and musts with their user stories](https://raw.githubusercontent.com/macorifice/yeti/main/docs/dashboard.png)
+
+## Quick start
+
+Add Yeti to Claude Desktop, in `claude_desktop_config.json`, then restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "yeti": {
+      "command": "npx",
+      "args": ["-y", "yeti-mcp"],
+      "env": { "PRODUCT_DESIGN_DB": "/Users/you/yeti/yeti.sqlite" }
+    }
+  }
+}
+```
+
+Set `PRODUCT_DESIGN_DB` to a file in a folder you keep. With `npx` the package lives in a cache that can be cleared, and a database stored there would go with it. Yeti needs Node.js 22.13 or later.
+
+Then ask Claude:
+
+> Create a project "Quotes for craftsmen" with Yeti. Problem: writing quotes takes hours. Users: plumbers and painters. Goal: a quote in five minutes.
+
+> Open the Yeti dashboard.
+
+## How it works
+
+A project goes through five phases, in order:
 
 1. **discovery**: problem, users and goal
 2. **definition**: requirements (MoSCoW) and user stories
@@ -19,47 +47,67 @@ Projects have a mode, chosen at creation:
 
 ## Tools
 
+**Projects**
+
 | Tool | What it does |
 | --- | --- |
 | `create_project` | Start a project in the discovery phase, in `strict` or `free` mode |
 | `list_projects` | List projects with id, name, phase and mode; archived ones are hidden unless `includeArchived` is set |
+| `get_project` | Show phase, what is missing, and linked items |
+| `project_summary` | Progress overview: requirements by priority and status, musts covered by stories, criteria done, RICE leader, Jira links, and what is missing to close |
 | `update_project` | Change a project's name, problem, users or goal |
-| `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; needs `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN`; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
-| `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
-| `search_items` | Search requirements and stories by text, optionally within one project |
-| `import_requirements` | Import requirements and user stories from CSV in the `export_backlog` format. Story-to-requirement links are not restored |
+| `advance_phase` | Move to the next phase, or list what is missing |
+| `set_project_mode` | Switch a project between `strict` and `free` |
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
-| `set_project_mode` | Switch a project between `strict` and `free` |
-| `open_dashboard` | Start the live, read-only dashboard and return its local address |
-| `export_dashboard` | Write a read-only HTML dashboard (phases, missing items, must coverage, RICE, flows) to `data/exports/dashboard.html` |
-| `project_summary` | Progress overview: requirements by priority and status, musts covered by stories, criteria done, RICE leader, Jira links, and what is missing to close |
-| `get_project` | Show phase, what is missing, and linked items |
-| `advance_phase` | Move to the next phase, or list what is missing |
+| `delete_project` | Permanently delete a project and its items. Requires `confirm: true`; Jira issues are not touched |
+
+**Requirements and user stories**
+
+| Tool | What it does |
+| --- | --- |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
 | `list_requirements` | List requirements, filtered by priority, status or project |
-| `export_backlog` | Export a project backlog as Markdown or CSV; with `save`, also writes it to `data/exports/` |
 | `update_requirement` | Change a requirement's title, description or priority |
-| `delete_requirement` | Delete a requirement and unlink it from stories |
-| `set_criterion_status` | Mark one acceptance criterion of a user story as done or not done |
-| `list_stories` | List user stories with their ids, links, criteria state and Jira key |
-| `delete_project` | Permanently delete a project and its items. Requires `confirm: true`; Jira issues are not touched |
-| `update_user_story` | Change a story's persona, goal, benefit, linked requirements or criteria. Changing criteria resets their done state |
-| `delete_flow` | Delete one saved flow diagram, by the index shown by `list_flows` |
-| `list_flows` | List the flow diagrams saved in a project, with their index |
-| `delete_user_story` | Delete a user story |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
+| `delete_requirement` | Delete a requirement and unlink it from stories |
 | `add_user_story` | Create a user story with acceptance criteria, optionally linked to requirements (`requirementIds`) |
+| `list_stories` | List user stories with their ids, links, criteria state and Jira key |
+| `update_user_story` | Change a story's persona, goal, benefit, linked requirements or criteria. Changing criteria resets their done state |
+| `set_criterion_status` | Mark one acceptance criterion of a user story as done or not done |
+| `delete_user_story` | Delete a user story |
+| `search_items` | Search requirements and stories by text, optionally within one project |
+
+**Prioritization and flows**
+
+| Tool | What it does |
+| --- | --- |
 | `prioritize_rice` | Compute and sort RICE scores |
 | `map_user_flow` | Generate a Mermaid flow diagram, with Yes/No branches, `next` and `ends` |
+| `list_flows` | List the flow diagrams saved in a project, with their index |
+| `delete_flow` | Delete one saved flow diagram, by the index shown by `list_flows` |
+
+**Import, export and dashboard**
+
+| Tool | What it does |
+| --- | --- |
+| `export_backlog` | Export a project backlog as Markdown or CSV; with `save`, also writes it to `data/exports/` |
+| `import_requirements` | Import requirements and user stories from CSV in the `export_backlog` format. Story-to-requirement links are not restored |
+| `open_dashboard` | Start the live, read-only dashboard and return its local address |
+| `export_dashboard` | Write a static HTML snapshot of the dashboard to `data/exports/dashboard.html` |
+
+**Jira**
+
+| Tool | What it does |
+| --- | --- |
+| `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
+| `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
 
 Requirements, stories, RICE scores and flows accept an optional `projectId` to link them to a project.
 
-## Requirements
+## Install from source
 
-- Node.js 22.13 or later (uses the built-in `node:sqlite` module)
-
-## Install
+You need Node.js 22.13 or later (Yeti uses the built-in `node:sqlite` module).
 
 ```bash
 git clone https://github.com/macorifice/yeti.git
@@ -68,9 +116,7 @@ npm install
 npm run build
 ```
 
-## Connect to Claude Desktop
-
-Add this to `claude_desktop_config.json`, using the absolute path to `dist/index.js` on your machine:
+Then add it to `claude_desktop_config.json`, using the absolute path to `dist/index.js` on your machine:
 
 ```json
 {
@@ -127,6 +173,8 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 
 Yeti has a read-only dashboard for the design side of your projects: the phase each project is in, what is missing to move on, which musts are covered by user stories, acceptance criteria, RICE scores and flow diagrams. It does not show a task board: execution belongs in Jira.
 
+![User stories with their criteria, RICE scores and a flow diagram in the Yeti dashboard](https://raw.githubusercontent.com/macorifice/yeti/main/docs/dashboard-detail.png)
+
 Open it from Claude:
 
 > Open the Yeti dashboard.
@@ -171,7 +219,7 @@ Without these variables, `push_to_jira` refuses to send and tells you which one 
 
 ## Data
 
-Data is stored in SQLite, in `data/yeti.sqlite` inside the project folder. Earlier versions used `data/db.json`: it is imported automatically the first time the new version runs, and then left untouched. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
+Data is stored in SQLite. From a source checkout the default is `data/yeti.sqlite` inside the project folder; with `npx`, set `PRODUCT_DESIGN_DB` as shown in the quick start. Earlier versions used `data/db.json`: it is imported automatically the first time the new version runs, and then left untouched. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
 
 ```json
 "env": { "PRODUCT_DESIGN_DB": "/absolute/path/to/yeti.sqlite" }
