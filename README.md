@@ -43,6 +43,7 @@ Projects have a mode, chosen at creation:
 | `list_stories` | List user stories with their ids, links, criteria state and Jira key |
 | `delete_project` | Permanently delete a project and its items. Requires `confirm: true`; Jira issues are not touched |
 | `update_user_story` | Change a story's persona, goal, benefit, linked requirements or criteria. Changing criteria resets their done state |
+| `delete_flow` | Delete one saved flow diagram, by the index shown by `list_flows` |
 | `list_flows` | List the flow diagrams saved in a project, with their index |
 | `delete_user_story` | Delete a user story |
 | `set_requirement_status` | Mark a requirement `open` or `done` |

@@ -35,6 +35,7 @@ assert.deepEqual(names, [
   "advance_phase",
   "archive_project",
   "create_project",
+  "delete_flow",
   "delete_project",
   "delete_requirement",
   "delete_user_story",
@@ -59,7 +60,7 @@ assert.deepEqual(names, [
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 28 tools");
+ok("exposes 29 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -444,6 +445,18 @@ assert.equal(flows.length, 1);
 assert.equal(flows[0].index, 0);
 assert.match(flows[0].diagram, /Listed|S0 --> S1/);
 ok("list_flows returns saved diagrams with their index");
+
+// Delete a flow
+const fl = JSON.parse(await call("create_project", { name: "Flow delete", problem: "p", users: "u", goal: "g" }));
+await call("map_user_flow", { name: "First", steps: [{ label: "A" }, { label: "B" }], projectId: fl.id });
+await call("map_user_flow", { name: "Second", steps: [{ label: "C" }, { label: "D" }], projectId: fl.id });
+assert.match(await call("delete_flow", { projectId: fl.id, index: 0 }), /Flow 0 deleted. 1 flow\(s\) left/);
+const leftFlows = JSON.parse(await call("list_flows", { projectId: fl.id }));
+assert.equal(leftFlows.length, 1);
+assert.match(leftFlows[0].diagram, /Second/);
+assert.match(await call("delete_flow", { projectId: fl.id, index: 5 }), /not found/);
+assert.match(await call("delete_flow", { projectId: 9999, index: 0 }), /not found/);
+ok("delete_flow removes one diagram by index and reports bad input");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
