@@ -28,6 +28,9 @@ Projects have a mode, chosen at creation:
 | `add_requirement` | Add a requirement with a MoSCoW priority |
 | `list_requirements` | List requirements, filtered by priority, status or project |
 | `export_backlog` | Export a project backlog as Markdown or CSV |
+| `update_requirement` | Change a requirement's title, description or priority |
+| `delete_requirement` | Delete a requirement and unlink it from stories |
+| `delete_user_story` | Delete a user story |
 | `set_requirement_status` | Mark a requirement `open` or `done` |
 | `add_user_story` | Create a user story with acceptance criteria, optionally linked to requirements (`requirementIds`) |
 | `prioritize_rice` | Compute and sort RICE scores |

@@ -32,6 +32,8 @@ assert.deepEqual(names, [
   "add_user_story",
   "advance_phase",
   "create_project",
+  "delete_requirement",
+  "delete_user_story",
   "export_backlog",
   "get_project",
   "list_projects",
@@ -39,8 +41,9 @@ assert.deepEqual(names, [
   "map_user_flow",
   "prioritize_rice",
   "set_requirement_status",
+  "update_requirement",
 ]);
-ok("exposes 11 tools");
+ok("exposes 14 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -206,6 +209,26 @@ const jumped = await call("map_user_flow", { name: "Jump", steps: [{ label: "A",
 assert.match(jumped, /S0 --> S2/);
 assert.doesNotMatch(jumped, /S0 --> S1/);
 ok("map_user_flow supports next and ends for non-decision steps");
+
+// Edit and delete
+const e = JSON.parse(await call("add_requirement", { title: "Typo titel", description: "d", priority: "could" }));
+const edited = JSON.parse(await call("update_requirement", { id: e.id, title: "Fixed title", priority: "must" }));
+assert.equal(edited.title, "Fixed title");
+assert.equal(edited.priority, "must");
+assert.equal(edited.description, "d", "untouched fields stay the same");
+assert.match(await call("update_requirement", { id: 9999, title: "x y z" }), /not found/);
+ok("update_requirement changes only the fields passed");
+
+const linkedReq = JSON.parse(await call("add_requirement", { title: "Will be deleted", description: "d" }));
+const linkedStoryText = await call("add_user_story", { persona: "a", goal: "b", benefit: "c", acceptanceCriteria: ["x"], requirementIds: [linkedReq.id] });
+const linkedStoryId = Number(linkedStoryText.match(/^Story (\d+)/)[1]);
+assert.match(await call("delete_requirement", { id: linkedReq.id }), /deleted/);
+assert.match(await call("delete_requirement", { id: linkedReq.id }), /not found/);
+ok("delete_requirement removes the requirement");
+
+assert.match(await call("delete_user_story", { id: linkedStoryId }), /deleted/);
+assert.match(await call("delete_user_story", { id: linkedStoryId }), /not found/);
+ok("delete_user_story removes the story, and reports unknown ids");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
