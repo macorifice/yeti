@@ -42,12 +42,14 @@ assert.deepEqual(names, [
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
+  "search_items",
   "set_criterion_status",
   "set_project_mode",
   "set_requirement_status",
+  "update_project",
   "update_requirement",
 ]);
-ok("exposes 17 tools");
+ok("exposes 19 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -272,6 +274,23 @@ assert.equal(switched.mode, "free");
 assert.equal(JSON.parse(await call("advance_phase", { projectId: mode.id })).phase, "definition");
 assert.equal(JSON.parse(await call("advance_phase", { projectId: mode.id })).phase, "prioritization");
 ok("set_project_mode switches to free and advancing skips missing items");
+
+// Update project and search
+const up = JSON.parse(await call("create_project", { name: "Old name", problem: "old problem", users: "u", goal: "g" }));
+const renamed = JSON.parse(await call("update_project", { projectId: up.id, name: "New name" }));
+assert.equal(renamed.name, "New name");
+assert.equal(renamed.problem, "old problem", "untouched fields stay");
+assert.match(await call("update_project", { projectId: 9999, name: "x y" }), /not found/);
+ok("update_project changes only the fields passed");
+
+await call("add_requirement", { title: "Export alle fatture", description: "Esporta in PDF le fatture", priority: "could", projectId: up.id });
+await call("add_user_story", { persona: "contabile", goal: "cercare una fattura", benefit: "trovarla in fretta", acceptanceCriteria: ["Ricerca per numero"], projectId: up.id });
+const hitsAll = await call("search_items", { query: "FATTUR" });
+assert.match(hitsAll, /"type": "requirement"/);
+assert.match(hitsAll, /"type": "story"/);
+assert.match(await call("search_items", { query: "fattur", projectId: 9999 }), /No items match/);
+assert.match(await call("search_items", { query: "zzzzqqq" }), /No items match/);
+ok("search_items finds requirements and stories, case-insensitive, by project");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
