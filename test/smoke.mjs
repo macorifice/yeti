@@ -34,12 +34,13 @@ assert.deepEqual(names, [
   "create_project",
   "export_backlog",
   "get_project",
+  "list_projects",
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
   "set_requirement_status",
 ]);
-ok("exposes 10 tools");
+ok("exposes 11 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -107,8 +108,8 @@ assert.equal(blocked.phase, "definition");
 assert.equal(blocked.missing.length, 2);
 ok("definition blocked without requirements and stories");
 
-await call("add_requirement", { title: "Voice dictation", description: "Dictate the lines", priority: "must", projectId: p.id });
-await call("add_user_story", { persona: "craftsman", goal: "dictate", benefit: "time", acceptanceCriteria: ["ok"], projectId: p.id });
+const mustReq = JSON.parse(await call("add_requirement", { title: "Voice dictation", description: "Dictate the lines", priority: "must", projectId: p.id }));
+await call("add_user_story", { persona: "craftsman", goal: "dictate", benefit: "time", acceptanceCriteria: ["ok"], requirementIds: [mustReq.id], projectId: p.id });
 adv = JSON.parse(await call("advance_phase", { projectId: p.id }));
 assert.equal(adv.phase, "prioritization");
 ok("definition complete with linked items");
@@ -165,6 +166,46 @@ assert.match(lines[1], /^requirement,\d+,"Must, with comma",must,open,"Say ""hi"
 assert.match(lines[3], /^story,/);
 assert.match(await call("export_backlog", { projectId: 999 }), /not found/);
 ok("export_backlog exports Markdown and CSV with correct escaping");
+
+// list_projects
+const projects = JSON.parse(await call("list_projects", {}));
+assert.ok(projects.some((x) => x.id === p.id && x.phase === "closed"));
+assert.ok(JSON.parse(await call("list_projects", { includeClosed: false })).every((x) => x.phase !== "closed"));
+ok("list_projects lists projects and can hide closed ones");
+
+// Stories must point to real requirements
+assert.match(await call("add_user_story", { persona: "a", goal: "b", benefit: "c", acceptanceCriteria: ["d"], requirementIds: [9999] }), /not found/);
+ok("add_user_story rejects unknown requirement ids");
+
+// A must without a linked story blocks verification
+const t = JSON.parse(await call("create_project", { name: "Trace test", problem: "Trace", users: "team", goal: "trace" }));
+await call("advance_phase", { projectId: t.id });
+const tReq = JSON.parse(await call("add_requirement", { title: "Orphan must", description: "No story yet", priority: "must", projectId: t.id }));
+await call("add_user_story", { persona: "user", goal: "something else", benefit: "x", acceptanceCriteria: ["y"], projectId: t.id });
+await call("advance_phase", { projectId: t.id });
+await call("prioritize_rice", { items: [{ name: "Z", reach: 1, impact: 1, confidence: 1, effort: 1 }], projectId: t.id });
+await call("advance_phase", { projectId: t.id });
+await call("map_user_flow", { name: "Trace", steps: [{ label: "A" }, { label: "B" }], projectId: t.id });
+await call("advance_phase", { projectId: t.id });
+await call("set_requirement_status", { id: tReq.id, status: "done" });
+const tBlocked = JSON.parse(await call("advance_phase", { projectId: t.id }));
+assert.equal(tBlocked.missing.length, 1);
+assert.match(tBlocked.missing[0], /must without a user story/);
+await call("add_user_story", { persona: "user", goal: "orphan", benefit: "x", acceptanceCriteria: ["y"], requirementIds: [tReq.id], projectId: t.id });
+assert.match(await call("advance_phase", { projectId: t.id }), /Project closed/);
+ok("verification blocks a must without a user story, and closes once it is linked");
+
+// Flow links: next and ends on non-decision steps
+const routed = await call("map_user_flow", { name: "Routing", steps: [{ label: "Start" }, { label: "Choice", decision: true, no: 3 }, { label: "Yes path", ends: true }, { label: "No path" }, { label: "Done" }] });
+assert.match(routed, /S0 --> S1/);
+assert.match(routed, /S1 -- Yes --> S2/);
+assert.match(routed, /S1 -- No --> S3/);
+assert.match(routed, /S3 --> S4/);
+assert.doesNotMatch(routed, /S2 -->/);
+const jumped = await call("map_user_flow", { name: "Jump", steps: [{ label: "A", next: 2 }, { label: "B" }, { label: "C" }] });
+assert.match(jumped, /S0 --> S2/);
+assert.doesNotMatch(jumped, /S0 --> S1/);
+ok("map_user_flow supports next and ends for non-decision steps");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

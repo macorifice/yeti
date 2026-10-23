@@ -27,6 +27,7 @@ type Requirement = {
 type Story = {
   id: number;
   projectId?: number;
+  requirementIds?: number[]; // requirements this story covers
   persona: string;
   goal: string;
   benefit: string;
@@ -92,10 +93,15 @@ function missingFor(db: DB, p: Project): string[] {
       return p.rice.length ? [] : ["at least one RICE scoring (prioritize_rice with projectId)"];
     case "flows":
       return p.flows.length ? [] : ["at least one flow diagram (map_user_flow with projectId)"];
-    case "verification":
+    case "verification": {
+      const covered = new Set(stories.flatMap((s) => s.requirementIds ?? []));
       return reqs
-        .filter((r) => r.priority === "must" && r.status !== "done")
-        .map((r) => `unfinished must: "${r.title}" (id ${r.id})`);
+        .filter((r) => r.priority === "must")
+        .flatMap((r) => [
+          ...(r.status !== "done" ? [`unfinished must: "${r.title}" (id ${r.id})`] : []),
+          ...(covered.has(r.id) ? [] : [`must without a user story: "${r.title}" (id ${r.id})`]),
+        ]);
+    }
   }
 }
 
@@ -133,6 +139,28 @@ server.registerTool(
     db.projects.push(project);
     await saveDb(db);
     return text({ ...project, phase: PHASES[0] });
+  },
+);
+
+server.registerTool(
+  "list_projects",
+  {
+    description: "List projects with their id, name, phase and status. Use it to find a projectId.",
+    inputSchema: {
+      includeClosed: z.boolean().default(true).describe("Set to false to hide closed projects"),
+    },
+  },
+  async ({ includeClosed }) => {
+    const db = await loadDb();
+    const projects = db.projects
+      .filter((p) => includeClosed || !p.closed)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        phase: p.closed ? "closed" : PHASES[p.phase],
+        mode: p.mode ?? "strict",
+      }));
+    return text(projects.length ? projects : "No projects found.");
   },
 );
 
@@ -264,13 +292,17 @@ server.registerTool(
       benefit: z.string().describe("Why they want it"),
       acceptanceCriteria: z.array(z.string()).min(1).describe("Verifiable conditions that define done"),
       projectId: projectIdSchema,
+      requirementIds: z.array(z.number().int()).optional().describe("Ids of the requirements this story covers"),
     },
   },
-  async ({ persona, goal, benefit, acceptanceCriteria, projectId }) => {
+  async ({ persona, goal, benefit, acceptanceCriteria, projectId, requirementIds }) => {
     const db = await loadDb();
+    const unknown = (requirementIds ?? []).filter((id) => !db.requirements.some((r) => r.id === id));
+    if (unknown.length) return text(`Requirement(s) not found: ${unknown.join(", ")}.`);
     const story: Story = {
       id: db.nextId++,
       ...(projectId !== undefined ? { projectId } : {}),
+      ...(requirementIds?.length ? { requirementIds } : {}),
       persona,
       goal,
       benefit,
@@ -337,6 +369,8 @@ server.registerTool(
             decision: z.boolean().default(false).describe("true if this is a decision point (diamond)"),
             yes: z.number().int().min(0).optional().describe("Index of the step reached on Yes. Defaults to the next step"),
             no: z.number().int().min(0).optional().describe("Index of the step reached on No. Only for decisions; omit for no No branch"),
+            next: z.number().int().min(0).optional().describe("Index of the step reached after this one (non-decisions). Defaults to the next step"),
+            ends: z.boolean().default(false).describe("true if this step is a final step with no outgoing arrow"),
           }),
         )
         .min(2),
@@ -344,8 +378,10 @@ server.registerTool(
     },
   },
   async ({ name, steps, projectId }) => {
-    const outOfRange = steps.some((s) => [s.yes, s.no].some((t) => t !== undefined && t >= steps.length));
-    if (outOfRange) return text(`Step index out of range: there are ${steps.length} steps (0 to ${steps.length - 1}).`);
+    const targets = steps.flatMap((s) => [s.yes, s.no, s.next]);
+    if (targets.some((t) => t !== undefined && t >= steps.length)) {
+      return text(`Step index out of range: there are ${steps.length} steps (0 to ${steps.length - 1}).`);
+    }
 
     const lines = ["flowchart TD", `  %% ${name}`];
     steps.forEach((s, i) => {
@@ -357,8 +393,9 @@ server.registerTool(
         const yes = s.yes ?? (i + 1 < steps.length ? i + 1 : undefined);
         if (yes !== undefined) lines.push(`  S${i} -- Yes --> S${yes}`);
         if (s.no !== undefined) lines.push(`  S${i} -- No --> S${s.no}`);
-      } else if (i + 1 < steps.length) {
-        lines.push(`  S${i} --> S${i + 1}`);
+      } else if (!s.ends) {
+        const target = s.next ?? (i + 1 < steps.length ? i + 1 : undefined);
+        if (target !== undefined) lines.push(`  S${i} --> S${target}`);
       }
     });
     const diagram = "```mermaid\n" + lines.join("\n") + "\n```";
