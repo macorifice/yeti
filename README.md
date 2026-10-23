@@ -75,6 +75,44 @@ Add this to `claude_desktop_config.json`, using the absolute path to `dist/index
 
 Restart Claude Desktop after editing the file.
 
+## Usage
+
+Once connected, you work with Yeti by talking to Claude. A typical project looks like this.
+
+**1. Create a project**
+
+> Create a project "Quotes for craftsmen". Problem: writing quotes takes hours. Users: plumbers and painters. Goal: a quote in five minutes.
+
+Yeti creates the project in the `discovery` phase.
+
+**2. Move through the phases**
+
+- **definition**: add at least one requirement and one user story linked to it.
+- **prioritization**: score the ideas with RICE.
+- **flows**: draw at least one flow diagram.
+- **verification**: every `must` requirement is done and covered by a user story.
+
+In `strict` mode (the default), Yeti will not advance until the phase is complete, and it tells you what is missing. In `free` mode, it advances and lists what it skipped. You can switch with `set_project_mode`.
+
+**3. Work on the backlog**
+
+- Edit or delete requirements and stories.
+- Mark acceptance criteria as done.
+- Search across a project.
+- Duplicate a project to reuse it as a template.
+- Import requirements from a CSV file.
+
+**4. Export**
+
+> Export the project backlog as Markdown and save it to a file.
+
+With `save: true`, the file is written to `data/exports/` next to the database.
+
+**Good to know**
+
+- Data is stored locally, in `data/db.json`. The content still passes through the chat, so do not put sensitive data in it.
+- RICE scores are the numbers you enter. Yeti sorts them; it does not estimate them.
+
 ## Data
 
 Data is stored in `data/db.json` inside the project folder. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
