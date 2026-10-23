@@ -32,6 +32,7 @@ assert.deepEqual(names, [
   "add_requirement",
   "add_user_story",
   "advance_phase",
+  "archive_project",
   "create_project",
   "delete_requirement",
   "delete_user_story",
@@ -42,10 +43,11 @@ assert.deepEqual(names, [
   "map_user_flow",
   "prioritize_rice",
   "set_criterion_status",
+  "set_project_mode",
   "set_requirement_status",
   "update_requirement",
 ]);
-ok("exposes 15 tools");
+ok("exposes 17 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -253,6 +255,23 @@ assert.match(saved, /^Saved to .*export-file\.csv$/);
 assert.ok(existsSync(savedPath));
 assert.match(readFileSync(savedPath, "utf8"), /^type,id,title/);
 ok("export_backlog with save writes data/exports/<project>.<ext>");
+
+// Archive and mode
+const arch = JSON.parse(await call("create_project", { name: "To archive", problem: "p", users: "u", goal: "g" }));
+await call("archive_project", { projectId: arch.id });
+assert.ok(!JSON.parse(await call("list_projects", {})).some((x) => x.id === arch.id), "hidden by default");
+assert.ok(JSON.parse(await call("list_projects", { includeArchived: true })).some((x) => x.id === arch.id), "shown when asked");
+await call("archive_project", { projectId: arch.id, archived: false });
+assert.ok(JSON.parse(await call("list_projects", {})).some((x) => x.id === arch.id), "back after unarchive");
+assert.match(await call("archive_project", { projectId: 9999 }), /not found/);
+ok("archive_project hides and restores projects");
+
+const mode = JSON.parse(await call("create_project", { name: "Mode switch", problem: "p", users: "u", goal: "g" }));
+const switched = JSON.parse(await call("set_project_mode", { projectId: mode.id, mode: "free" }));
+assert.equal(switched.mode, "free");
+assert.equal(JSON.parse(await call("advance_phase", { projectId: mode.id })).phase, "definition");
+assert.equal(JSON.parse(await call("advance_phase", { projectId: mode.id })).phase, "prioritization");
+ok("set_project_mode switches to free and advancing skips missing items");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

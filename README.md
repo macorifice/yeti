@@ -22,7 +22,9 @@ Projects have a mode, chosen at creation:
 | Tool | What it does |
 | --- | --- |
 | `create_project` | Start a project in the discovery phase, in `strict` or `free` mode |
-| `list_projects` | List projects with id, name, phase and mode |
+| `list_projects` | List projects with id, name, phase and mode; archived ones are hidden unless `includeArchived` is set |
+| `archive_project` | Hide a project from `list_projects` without deleting it |
+| `set_project_mode` | Switch a project between `strict` and `free` |
 | `get_project` | Show phase, what is missing, and linked items |
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `add_requirement` | Add a requirement with a MoSCoW priority |
