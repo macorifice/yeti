@@ -27,7 +27,7 @@ Projects have a mode, chosen at creation:
 | `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; needs `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN`; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
 | `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
 | `search_items` | Search requirements and stories by text, optionally within one project |
-| `import_requirements` | Import requirements from CSV in the `export_backlog` format; stories are skipped |
+| `import_requirements` | Import requirements and user stories from CSV in the `export_backlog` format. Story-to-requirement links are not restored |
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
 | `set_project_mode` | Switch a project between `strict` and `free` |
