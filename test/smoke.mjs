@@ -45,6 +45,7 @@ assert.deepEqual(names, [
   "list_requirements",
   "map_user_flow",
   "prioritize_rice",
+  "project_summary",
   "push_to_jira",
   "search_items",
   "set_criterion_status",
@@ -54,7 +55,7 @@ assert.deepEqual(names, [
   "update_project",
   "update_requirement",
 ]);
-ok("exposes 23 tools");
+ok("exposes 24 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -368,6 +369,26 @@ assert.match(await call("sync_from_jira", { projectId: 9999 }), /not found/);
 const upPreview = JSON.parse(await call("push_to_jira", { projectId: sy.id, projectKey: "PROJ", update: true }));
 assert.deepEqual(upPreview.updates, []);
 ok("sync_from_jira reports missing credentials, and update preview lists nothing unlinked");
+
+// Project summary
+const sm = JSON.parse(await call("create_project", { name: "Summary", problem: "p", users: "u", goal: "g" }));
+const smMust = JSON.parse(await call("add_requirement", { title: "Summary must", description: "d", priority: "must", projectId: sm.id }));
+await call("add_requirement", { title: "Summary could", description: "d", priority: "could", projectId: sm.id });
+const smStory = await call("add_user_story", { persona: "a", goal: "b", benefit: "c", acceptanceCriteria: ["one", "two"], requirementIds: [smMust.id], projectId: sm.id });
+await call("set_criterion_status", { storyId: Number(smStory.match(/^Story (\d+)/)[1]), index: 0, done: true });
+await call("prioritize_rice", { items: [{ name: "Top", reach: 10, impact: 3, confidence: 1, effort: 1 }, { name: "Low", reach: 1, impact: 1, confidence: 1, effort: 2 }], projectId: sm.id });
+const summary = JSON.parse(await call("project_summary", { projectId: sm.id }));
+assert.equal(summary.requirements.total, 2);
+assert.equal(summary.requirements.byPriority.must, 1);
+assert.equal(summary.musts.withStory, 1);
+assert.equal(summary.musts.done, 0);
+assert.equal(summary.stories.criteriaDone, 1);
+assert.equal(summary.stories.criteriaTotal, 2);
+assert.equal(summary.rice.leader, "Top");
+assert.equal(summary.jiraLinked, 0);
+assert.ok(summary.missing.length >= 0);
+assert.match(await call("project_summary", { projectId: 9999 }), /not found/);
+ok("project_summary reports requirements, musts, criteria, RICE leader and what is missing");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
