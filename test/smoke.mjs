@@ -42,6 +42,7 @@ assert.deepEqual(names, [
   "export_backlog",
   "get_project",
   "import_requirements",
+  "list_flows",
   "list_projects",
   "list_requirements",
   "list_stories",
@@ -56,8 +57,9 @@ assert.deepEqual(names, [
   "sync_from_jira",
   "update_project",
   "update_requirement",
+  "update_user_story",
 ]);
-ok("exposes 26 tools");
+ok("exposes 28 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -422,6 +424,26 @@ assert.match(await call("get_project", { projectId: dp.id }), /not found/);
 assert.match(await call("search_items", { query: "Doomed" }), /No items match/);
 assert.match(await call("list_stories", { projectId: dp.id }), /No user stories found/);
 ok("delete_project refuses without confirm and removes the project with its items");
+
+// Update a story and list flows
+const up2 = JSON.parse(await call("create_project", { name: "Story edit", problem: "p", users: "u", goal: "g" }));
+const upStoryId = Number((await call("add_user_story", { persona: "a", goal: "b", benefit: "c", acceptanceCriteria: ["one"], projectId: up2.id })).match(/^Story (\d+)/)[1]);
+await call("set_criterion_status", { storyId: upStoryId, index: 0, done: true });
+const storyEdit = JSON.parse(await call("update_user_story", { id: upStoryId, goal: "d", acceptanceCriteria: ["one", "two"] }));
+assert.equal(storyEdit.goal, "d");
+assert.equal(storyEdit.persona, "a", "untouched fields stay");
+assert.equal(storyEdit.criteriaDone, undefined, "changing criteria resets their done state");
+assert.match(await call("update_user_story", { id: 9999, goal: "x" }), /not found/);
+assert.match(await call("update_user_story", { id: upStoryId, requirementIds: [9999] }), /not found/);
+ok("update_user_story changes only the fields passed and resets criteria when they change");
+
+assert.match(await call("list_flows", { projectId: up2.id }), /No flows saved/);
+await call("map_user_flow", { name: "Listed", steps: [{ label: "A" }, { label: "B" }], projectId: up2.id });
+const flows = JSON.parse(await call("list_flows", { projectId: up2.id }));
+assert.equal(flows.length, 1);
+assert.equal(flows[0].index, 0);
+assert.match(flows[0].diagram, /Listed|S0 --> S1/);
+ok("list_flows returns saved diagrams with their index");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
