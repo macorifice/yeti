@@ -766,6 +766,53 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_user_story",
+  {
+    description: "Change a user story's persona, goal, benefit, linked requirements or acceptance criteria. Only the fields you pass change. Changing the criteria resets their done state.",
+    inputSchema: {
+      id: z.number().int(),
+      persona: z.string().optional(),
+      goal: z.string().optional(),
+      benefit: z.string().optional(),
+      acceptanceCriteria: z.array(z.string()).min(1).optional(),
+      requirementIds: z.array(z.number().int()).optional(),
+    },
+  },
+  async ({ id, persona, goal, benefit, acceptanceCriteria, requirementIds }) => {
+    const db = await loadDb();
+    const st = db.stories.find((x) => x.id === id);
+    if (!st) return text(`User story ${id} not found.`);
+    const unknown = (requirementIds ?? []).filter((rid) => !db.requirements.some((r) => r.id === rid));
+    if (unknown.length) return text(`Requirement(s) not found: ${unknown.join(", ")}.`);
+    if (persona !== undefined) st.persona = persona;
+    if (goal !== undefined) st.goal = goal;
+    if (benefit !== undefined) st.benefit = benefit;
+    if (requirementIds !== undefined) st.requirementIds = requirementIds.length ? requirementIds : undefined;
+    if (acceptanceCriteria !== undefined) {
+      st.acceptanceCriteria = acceptanceCriteria;
+      st.criteriaDone = undefined;
+      st.doneBySync = undefined;
+    }
+    await saveDb(db);
+    return text(st);
+  },
+);
+
+server.registerTool(
+  "list_flows",
+  {
+    description: "List the flow diagrams saved in a project, with their index. Use the index to refer to a diagram.",
+    inputSchema: { projectId: z.number().int() },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    return text(p.flows.length ? p.flows.map((diagram, index) => ({ index, diagram })) : "No flows saved for this project.");
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
