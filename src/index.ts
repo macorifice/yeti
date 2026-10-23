@@ -648,6 +648,57 @@ server.registerTool(
 );
 
 server.registerTool(
+  "project_summary",
+  {
+    description: "Summarise a project's progress: requirements by priority and status, story coverage of musts, acceptance criteria done, RICE leader, Jira links and what is missing to close.",
+    inputSchema: { projectId: z.number().int() },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const reqs = db.requirements.filter((r) => r.projectId === p.id);
+    const stories = db.stories.filter((st) => st.projectId === p.id);
+
+    const byPriority = { must: 0, should: 0, could: 0, wont: 0 };
+    const doneByPriority = { must: 0, should: 0, could: 0, wont: 0 };
+    for (const r of reqs) {
+      byPriority[r.priority]++;
+      if (r.status === "done") doneByPriority[r.priority]++;
+    }
+    const covered = new Set(stories.flatMap((st) => st.requirementIds ?? []));
+    const musts = reqs.filter((r) => r.priority === "must");
+    const criteria = stories.flatMap((st) => st.acceptanceCriteria.map((_, i) => Boolean(st.criteriaDone?.[i])));
+    const top = [...p.rice].sort((a, b) => b.score - a.score)[0];
+
+    return text({
+      project: p.name,
+      phase: p.closed ? "closed" : PHASES[p.phase],
+      requirements: {
+        total: reqs.length,
+        byPriority,
+        doneByPriority,
+        open: reqs.filter((r) => r.status === "open").length,
+      },
+      musts: {
+        total: musts.length,
+        done: musts.filter((r) => r.status === "done").length,
+        withStory: musts.filter((r) => covered.has(r.id)).length,
+      },
+      stories: {
+        total: stories.length,
+        criteriaDone: criteria.filter(Boolean).length,
+        criteriaTotal: criteria.length,
+      },
+      rice: top ? { leader: top.name, score: top.score } : null,
+      flows: p.flows.length,
+      jiraLinked: reqs.filter((r) => r.jiraKey).length + stories.filter((st) => st.jiraKey).length,
+      missing: p.closed ? [] : missingFor(db, p),
+    });
+  },
+);
+
+server.registerTool(
   "get_project",
   {
     description: "Show a project's status: current phase, what is missing to advance, and linked items.",
