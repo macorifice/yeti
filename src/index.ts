@@ -17,6 +17,7 @@ type Priority = "must" | "should" | "could" | "wont";
 type Requirement = {
   id: number;
   projectId?: number;
+  jiraKey?: string; // set once the issue exists in Jira
   title: string;
   description: string;
   priority: Priority;
@@ -27,6 +28,7 @@ type Requirement = {
 type Story = {
   id: number;
   projectId?: number;
+  jiraKey?: string; // set once the issue exists in Jira
   requirementIds?: number[]; // requirements this story covers
   persona: string;
   goal: string;
@@ -453,29 +455,36 @@ server.registerTool(
 // MoSCoW priority mapped to Jira's default priority names
 const JIRA_PRIORITY: Record<Priority, string> = { must: "Highest", should: "High", could: "Medium", wont: "Low" };
 
+// Jira needs descriptions as a document: one paragraph per line
+const adfDoc = (block: string) => ({
+  type: "doc",
+  version: 1,
+  content: (block || " ").split("\n").map((line) => ({ type: "paragraph", content: [{ type: "text", text: line || " " }] })),
+});
+
 server.registerTool(
   "push_to_jira",
   {
-    description: "Plan the Jira issues for a project: one Task per requirement and one Story per user story. Only dry-run is available for now: it lists what would be created and writes nothing.",
+    description: "Create Jira issues for a project: one Task per requirement and one Story per user story. Items already sent are skipped. dryRun (default true) only lists what would be created. Real sending needs JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN in the environment.",
     inputSchema: {
       projectId: z.number().int(),
       projectKey: z.string().regex(/^[A-Z][A-Z0-9]+$/).describe("Jira project key, e.g. PROJ"),
       dryRun: z.boolean().default(true),
+      limit: z.number().int().min(1).optional().describe("Send at most this many issues; useful to test with one"),
     },
   },
-  async ({ projectId, projectKey, dryRun }) => {
-    if (!dryRun) return text("Sending to Jira is not available yet. Use dryRun: true to preview the issues.");
+  async ({ projectId, projectKey, dryRun, limit }) => {
     const db = await loadDb();
     const p = db.projects.find((x) => x.id === projectId);
     if (!p) return text(`Project ${projectId} not found.`);
 
-    const plan = [
+    const items = [
       ...db.requirements
         .filter((r) => r.projectId === p.id)
         .map((r) => ({
-          source: { kind: "requirement", id: r.id },
+          kind: "requirement" as const,
+          ref: r,
           issueType: "Task",
-          project: projectKey,
           summary: r.title,
           priority: JIRA_PRIORITY[r.priority],
           description: r.description,
@@ -483,15 +492,58 @@ server.registerTool(
       ...db.stories
         .filter((st) => st.projectId === p.id)
         .map((st) => ({
-          source: { kind: "story", id: st.id },
+          kind: "story" as const,
+          ref: st,
           issueType: "Story",
-          project: projectKey,
           summary: `As a ${st.persona}, I want ${st.goal}`,
           priority: undefined,
           description: [`So that ${st.benefit}.`, "", "Acceptance criteria:", ...st.acceptanceCriteria.map((c) => `- ${c}`)].join("\n"),
         })),
     ];
-    return text({ dryRun: true, count: plan.length, issues: plan });
+    const pending = items.filter((i) => !i.ref.jiraKey);
+    const batch = pending.slice(0, limit ?? pending.length);
+    const skippedAlreadySent = items.length - pending.length;
+
+    if (dryRun) {
+      return text({
+        dryRun: true,
+        count: batch.length,
+        skippedAlreadySent,
+        issues: batch.map((i) => ({ source: { kind: i.kind, id: i.ref.id }, issueType: i.issueType, project: projectKey, summary: i.summary, priority: i.priority, description: i.description })),
+      });
+    }
+
+    const site = process.env.JIRA_SITE;
+    const email = process.env.JIRA_EMAIL;
+    const token = process.env.JIRA_API_TOKEN;
+    if (!site || !email || !token) return text("Missing JIRA_SITE, JIRA_EMAIL or JIRA_API_TOKEN in the environment.");
+    const auth = "Basic " + Buffer.from(`${email}:${token}`).toString("base64");
+
+    const created: { source: string; key: string }[] = [];
+    for (const i of batch) {
+      const res = await fetch(`${site}/rest/api/3/issue`, {
+        method: "POST",
+        headers: { Authorization: auth, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          fields: {
+            project: { key: projectKey },
+            issuetype: { name: i.issueType },
+            summary: i.summary,
+            description: adfDoc(i.description),
+            ...(i.priority ? { priority: { name: i.priority } } : {}),
+          },
+        }),
+      });
+      if (!res.ok) {
+        await saveDb(db);
+        return text({ error: `Jira answered ${res.status}`, detail: (await res.text()).slice(0, 500), created });
+      }
+      const key = (await res.json()).key as string;
+      i.ref.jiraKey = key;
+      created.push({ source: `${i.kind} ${i.ref.id}`, key });
+    }
+    await saveDb(db);
+    return text({ dryRun: false, created, skippedAlreadySent });
   },
 );
 
