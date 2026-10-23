@@ -189,6 +189,10 @@ The test starts the server on a temporary database and checks every tool and the
 
 Stable since 1.0.0. The tools, their inputs and the data format are covered by semantic versioning: breaking changes will come with a new major version.
 
+## Sponsor
+
+If Yeti is useful to you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/macorifice).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
