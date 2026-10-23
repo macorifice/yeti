@@ -5,14 +5,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const dir = mkdtempSync(join(tmpdir(), "pd-mcp-"));
 const transport = new StdioClientTransport({
   command: "node",
   args: ["dist/index.js"],
   // Jira variables are blanked so tests never reach a real Jira site
-  env: { ...process.env, PRODUCT_DESIGN_DB: join(dir, "db.json"), JIRA_SITE: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" },
+  env: { ...process.env, PRODUCT_DESIGN_DB: join(dir, "yeti.sqlite"), JIRA_SITE: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" },
 });
 const client = new Client({ name: "smoke", version: "0.0.1" });
 await client.connect(transport);
@@ -457,6 +457,31 @@ assert.match(leftFlows[0].diagram, /Second/);
 assert.match(await call("delete_flow", { projectId: fl.id, index: 5 }), /not found/);
 assert.match(await call("delete_flow", { projectId: 9999, index: 0 }), /not found/);
 ok("delete_flow removes one diagram by index and reports bad input");
+
+// Migration: a legacy db.json is imported once; after that SQLite is the source
+const mdir = mkdtempSync(join(tmpdir(), "pd-migrate-"));
+writeFileSync(join(mdir, "db.json"), JSON.stringify({
+  projects: [{ id: 1, name: "Legacy", problem: "p", users: "u", goal: "g", phase: 0, closed: false, rice: [], flows: [], createdAt: "x" }],
+  requirements: [{ id: 2, projectId: 1, title: "Old requirement", description: "d", priority: "must", status: "open", createdAt: "x" }],
+  stories: [],
+  nextId: 3,
+}));
+const dbEnv = { ...process.env, PRODUCT_DESIGN_DB: join(mdir, "yeti.sqlite"), JIRA_SITE: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" };
+const openClient = async () => {
+  const c = new Client({ name: "migrate", version: "0.0.1" });
+  await c.connect(new StdioClientTransport({ command: "node", args: ["dist/index.js"], env: dbEnv }));
+  return { c, call: async (name, args = {}) => (await c.callTool({ name, arguments: args })).content[0].text };
+};
+const first = await openClient();
+const migrated = JSON.parse(await first.call("get_project", { projectId: 1 }));
+assert.equal(migrated.name, "Legacy");
+assert.equal(migrated.requirementCount, 1);
+await first.c.close();
+writeFileSync(join(mdir, "db.json"), "not json anymore");
+const second = await openClient();
+assert.equal(JSON.parse(await second.call("get_project", { projectId: 1 })).name, "Legacy", "SQLite is the source after migration");
+await second.c.close();
+ok("legacy db.json is imported once into SQLite, which then becomes the source");
 
 await client.close();
 console.log(`\n${passed} checks passed`);
