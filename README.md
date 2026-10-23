@@ -25,7 +25,7 @@ Projects have a mode, chosen at creation:
 | `list_projects` | List projects with id, name, phase and mode; archived ones are hidden unless `includeArchived` is set |
 | `update_project` | Change a project's name, problem, users or goal |
 | `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; needs `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN`; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
-| `sync_from_jira` | Mark requirements and stories done in Yeti when their Jira issue is done. Read-only on Jira |
+| `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
 | `search_items` | Search requirements and stories by text, optionally within one project |
 | `import_requirements` | Import requirements from CSV in the `export_backlog` format; stories are skipped |
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
