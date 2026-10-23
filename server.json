@@ -1,0 +1,52 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.macorifice/yeti",
+  "title": "Yeti",
+  "description": "Product design with Claude: phases, requirements, user stories, RICE, flows, dashboard, Jira.",
+  "websiteUrl": "https://github.com/macorifice/yeti",
+  "repository": {
+    "url": "https://github.com/macorifice/yeti",
+    "source": "github"
+  },
+  "version": "1.0.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "yeti-mcp",
+      "version": "1.0.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PRODUCT_DESIGN_DB",
+          "description": "Absolute path of the SQLite database file. Set it to a folder you keep when running with npx.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "JIRA_SITE",
+          "description": "Jira site, e.g. https://your-team.atlassian.net. Only needed for the Jira tools.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "JIRA_EMAIL",
+          "description": "Email of the Atlassian account. Only needed for the Jira tools.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "JIRA_API_TOKEN",
+          "description": "Atlassian API token. Only needed for the Jira tools.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

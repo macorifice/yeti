@@ -516,5 +516,15 @@ ok("open_dashboard returns a working local address and reuses it");
 assert.equal(readFileSync("dist/index.js", "utf8").split("\n")[0], "#!/usr/bin/env node");
 ok("dist/index.js starts with a node shebang");
 
+// MCP Registry metadata must match the npm package, or publishing is rejected
+const pkgJson = JSON.parse(readFileSync("package.json", "utf8"));
+const serverJson = JSON.parse(readFileSync("server.json", "utf8"));
+assert.equal(serverJson.name, pkgJson.mcpName);
+assert.equal(serverJson.version, pkgJson.version);
+assert.equal(serverJson.packages[0].identifier, pkgJson.name);
+assert.equal(serverJson.packages[0].version, pkgJson.version);
+assert.ok(serverJson.description.length <= 100, "registry descriptions are limited to 100 characters");
+ok("server.json matches package.json for the MCP Registry");
+
 await client.close();
 console.log(`\n${passed} checks passed`);

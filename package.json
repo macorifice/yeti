@@ -1,12 +1,14 @@
 {
   "name": "yeti-mcp",
   "version": "1.0.2",
+  "mcpName": "io.github.macorifice/yeti",
   "description": "An MCP server that guides product design work through mandatory phases: discovery, requirements, prioritization, flows and verification.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "npm run build && node test/smoke.mjs && node test/dashboard.mjs"
+    "test": "npm run build && node test/smoke.mjs && node test/dashboard.mjs",
+    "version": "node scripts/sync-server-json.mjs && git add server.json"
   },
   "keywords": [
     "mcp",
