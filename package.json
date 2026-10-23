@@ -1,6 +1,6 @@
 {
   "name": "yeti-mcp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "An MCP server that guides product design work through mandatory phases: discovery, requirements, prioritization, flows and verification.",
   "main": "dist/index.js",
   "scripts": {
