@@ -22,6 +22,7 @@ type Requirement = {
   description: string;
   priority: Priority;
   status: "open" | "done";
+  doneBySync?: boolean; // true when sync_from_jira marked it done, so it may reopen
   createdAt: string;
 };
 
@@ -35,6 +36,7 @@ type Story = {
   benefit: string;
   acceptanceCriteria: string[];
   criteriaDone?: boolean[]; // same order as acceptanceCriteria
+  doneBySync?: boolean; // true when sync_from_jira ticked the criteria, so it may reopen
   createdAt: string;
 };
 
@@ -595,6 +597,7 @@ server.registerTool(
     const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
     const linkedStories = db.stories.filter((st) => st.projectId === p.id && st.jiraKey);
     const completed: string[] = [];
+    const reopened: string[] = [];
     const checked: string[] = [];
 
     const fetchDone = async (key: string) => {
@@ -609,25 +612,38 @@ server.registerTool(
     try {
       for (const r of linkedReqs) {
         checked.push(r.jiraKey as string);
-        if (r.status !== "done" && (await fetchDone(r.jiraKey as string))) {
+        const done = await fetchDone(r.jiraKey as string);
+        if (done && r.status !== "done") {
           r.status = "done";
+          r.doneBySync = true;
           completed.push(`requirement ${r.id} (${r.jiraKey})`);
+        } else if (!done && r.doneBySync) {
+          // Only reopen what sync itself completed; items closed by hand in Yeti stay as they are
+          r.status = "open";
+          r.doneBySync = false;
+          reopened.push(`requirement ${r.id} (${r.jiraKey})`);
         }
       }
       for (const st of linkedStories) {
         checked.push(st.jiraKey as string);
+        const done = await fetchDone(st.jiraKey as string);
         const allTicked = st.acceptanceCriteria.every((_, i) => st.criteriaDone?.[i]);
-        if (!allTicked && (await fetchDone(st.jiraKey as string))) {
+        if (done && !allTicked) {
           st.criteriaDone = st.acceptanceCriteria.map(() => true);
+          st.doneBySync = true;
           completed.push(`story ${st.id} (${st.jiraKey})`);
+        } else if (!done && st.doneBySync) {
+          st.criteriaDone = st.acceptanceCriteria.map(() => false);
+          st.doneBySync = false;
+          reopened.push(`story ${st.id} (${st.jiraKey})`);
         }
       }
     } catch (err) {
       await saveDb(db);
-      return text({ error: (err as Error).message, checked, completed });
+      return text({ error: (err as Error).message, checked, completed, reopened });
     }
     await saveDb(db);
-    return text({ checked: checked.length, completed });
+    return text({ checked: checked.length, completed, reopened });
   },
 );
 
