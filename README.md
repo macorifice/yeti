@@ -169,6 +169,10 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 - Data is stored locally, in `data/yeti.sqlite`. The content still passes through the chat, so do not put sensitive data in it.
 - RICE scores are the numbers you enter. Yeti sorts them; it does not estimate them.
 
+## Case study
+
+[Watch the case study (85 seconds)](docs/case-study-mastro.mp4): a small project from requirements to Jira, using the Mastro example. It covers the seven steps: creating the project, requirements and stories, RICE prioritisation, a flow diagram, the verification gate, sending to Jira, and keeping status in sync.
+
 ## Dashboard
 
 Yeti has a read-only dashboard for the design side of your projects: the phase each project is in, what is missing to move on, which musts are covered by user stories, acceptance criteria, RICE scores and flow diagrams. It does not show a task board: execution belongs in Jira.
