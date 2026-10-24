@@ -171,7 +171,9 @@ With `save: true`, the file is written to `data/exports/` next to the database.
 
 ## Case study
 
-[Watch the case study (85 seconds)](docs/case-study-mastro.mp4): a small project from requirements to Jira, using the Mastro example. It covers the seven steps: creating the project, requirements and stories, RICE prioritisation, a flow diagram, the verification gate, sending to Jira, and keeping status in sync.
+A small project from requirements to Jira, using the Mastro example: creating the project, requirements and user stories, RICE prioritisation, a flow diagram, the verification gate, sending to Jira, and keeping the status in sync.
+
+![Case study: from requirements to Jira](docs/case-study-mastro.gif)
 
 ## Dashboard
 
