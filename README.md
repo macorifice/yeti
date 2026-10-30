@@ -1,8 +1,6 @@
 # Yeti
 
-[![npm](https://img.shields.io/npm/v/yeti-mcp)](https://www.npmjs.com/package/yeti-mcp) [![CI](https://github.com/macorifice/yeti/actions/workflows/ci.yml/badge.svg)](https://github.com/macorifice/yeti/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-
-<a href="https://mcprush.com/to/yeti-mcp"><img height="20" src="https://mcprush.com/badge/yeti-mcp/score.svg" alt="Yeti MCP on mcprush" loading="lazy" /></a>
+[![npm](https://img.shields.io/npm/v/yeti-mcp)](https://www.npmjs.com/package/yeti-mcp) [![CI](https://github.com/macorifice/yeti/actions/workflows/ci.yml/badge.svg)](https://github.com/macorifice/yeti/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) <a href="https://mcprush.com/to/yeti-mcp"><img height="20" src="https://mcprush.com/badge/yeti-mcp/score.svg" alt="Yeti MCP on mcprush" loading="lazy" /></a>
 
 An [MCP](https://modelcontextprotocol.io) server for product design with Claude. It takes a project from the problem to a verified scope: requirements, user stories, RICE priorities and flow diagrams. Then it sends the work to Jira.
 
