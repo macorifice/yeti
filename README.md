@@ -230,7 +230,7 @@ For GitHub Issues, set `GITHUB_REPO` (owner/repo) and `GITHUB_TOKEN` instead. Wi
 
 Yeti supports two work trackers, Jira and GitHub Issues. A project is bound to one of them with `set_project_tracker`. Each sits behind a common interface, so more can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
 
-For GitHub Issues, set `GITHUB_REPO` to `owner/repo` and `GITHUB_TOKEN` to a token with issues write access. Requirements become issues labelled `requirement` and `priority: must` (or `should`, `could`, `wont`); user stories become issues labelled `user-story`. An item is done when its issue is closed.
+For GitHub Issues, set `GITHUB_REPO` to `owner/repo` and `GITHUB_TOKEN` to a token with issues write access. Requirements become issues labelled `requirement` and `priority: must` (or `should`, `could`, `wont`); user stories become issues labelled `user-story`. An item is done when its issue is closed. The GitHub integration has been checked end-to-end against a real repository: an item was sent, its issue was closed by hand, and the sync marked the item done.
 
 ## Data
 
