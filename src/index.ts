@@ -10,6 +10,7 @@ import { renderDashboard, type ProjectView } from "./dashboard.js";
 import { startDashboard } from "./web.js";
 import { PROJECT_TEMPLATES } from "./templates.js";
 import { jiraMapping, jiraTracker } from "./integrations/jira.js";
+import { githubMapping, githubTracker } from "./integrations/github.js";
 import { TrackerError } from "./integrations/tracker.js";
 import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Decision, type Priority, type Project, type Requirement, type Story } from "./store.js";
 
@@ -384,8 +385,146 @@ server.registerTool(
   },
 );
 
-// Work trackers Yeti can send items to. Only Jira for now.
-const trackerFor = (name: string) => (name === "jira" ? jiraTracker() : `Unknown tracker "${name}".`);
+// Work trackers Yeti can send items to. Each one is an adapter behind the Tracker interface.
+type TrackerName = "jira" | "github";
+const mappingFor = (name: TrackerName) => (name === "jira" ? jiraMapping : githubMapping);
+const trackerFor = (name: TrackerName) => (name === "jira" ? jiraTracker() : githubTracker());
+const trackerName = z.enum(["jira", "github"]);
+
+// Sends the project's requirements and stories to a tracker. The core decides what to send,
+// skips what was already sent, saves the keys, and handles dry runs.
+async function pushToTracker(
+  name: TrackerName,
+  args: { projectId: number; projectKey?: string; dryRun: boolean; limit?: number; update: boolean },
+) {
+  const { projectId, projectKey = "", dryRun, limit, update } = args;
+  if (name === "jira" && !/^[A-Z][A-Z0-9]+$/.test(projectKey)) return text("A Jira project key (for example PROJ) is required.");
+  const db = await loadDb();
+  const p = db.projects.find((x) => x.id === projectId);
+  if (!p) return text(`Project ${projectId} not found.`);
+  const mapping = mappingFor(name);
+
+  const items = [
+    ...db.requirements
+      .filter((r) => r.projectId === p.id)
+      .map((r) => ({
+        kind: "requirement" as const,
+        ref: r,
+        issueType: mapping.issueType("requirement"),
+        summary: r.title,
+        priority: mapping.priorityName(r.priority),
+        description: r.description,
+      })),
+    ...db.stories
+      .filter((st) => st.projectId === p.id)
+      .map((st) => ({
+        kind: "story" as const,
+        ref: st,
+        issueType: mapping.issueType("story"),
+        summary: `As a ${st.persona}, I want ${st.goal}`,
+        priority: undefined as string | undefined,
+        description: [`So that ${st.benefit}.`, "", "Acceptance criteria:", ...st.acceptanceCriteria.map((c) => `- ${c}`)].join("\n"),
+      })),
+  ];
+  const pending = items.filter((i) => !i.ref.jiraKey);
+  const linked = items.filter((i) => i.ref.jiraKey);
+  const batch = pending.slice(0, limit ?? pending.length);
+  const skippedAlreadySent = linked.length;
+
+  if (dryRun) {
+    return text({
+      dryRun: true,
+      tracker: name,
+      count: batch.length,
+      skippedAlreadySent,
+      updates: update ? linked.map((i) => ({ key: i.ref.jiraKey, summary: i.summary })) : [],
+      issues: batch.map((i) => ({ source: { kind: i.kind, id: i.ref.id }, issueType: i.issueType, project: projectKey, summary: i.summary, priority: i.priority, description: i.description })),
+    });
+  }
+
+  const tracker = trackerFor(name);
+  if (typeof tracker === "string") return text(tracker);
+  const created: { source: string; key: string }[] = [];
+  try {
+    for (const i of batch) {
+      const key = await tracker.create(projectKey, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority });
+      i.ref.jiraKey = key;
+      created.push({ source: `${i.kind} ${i.ref.id}`, key });
+    }
+  } catch (err) {
+    await saveDb(db);
+    if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created });
+    throw err;
+  }
+
+  const updated: string[] = [];
+  if (update) {
+    try {
+      for (const i of linked) {
+        await tracker.update(i.ref.jiraKey as string, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority });
+        updated.push(i.ref.jiraKey as string);
+      }
+    } catch (err) {
+      await saveDb(db);
+      if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created, updated });
+      throw err;
+    }
+  }
+  await saveDb(db);
+  return text({ dryRun: false, tracker: name, created, updated, skippedAlreadySent });
+}
+
+// Reads the status of linked issues and marks matching items done, or reopens what it completed
+async function syncWithTracker(name: TrackerName, projectId: number) {
+  const db = await loadDb();
+  const p = db.projects.find((x) => x.id === projectId);
+  if (!p) return text(`Project ${projectId} not found.`);
+  const tracker = trackerFor(name);
+  if (typeof tracker === "string") return text(tracker);
+
+  const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
+  const linkedStories = db.stories.filter((st) => st.projectId === p.id && st.jiraKey);
+  const completed: string[] = [];
+  const reopened: string[] = [];
+  const checked: string[] = [];
+
+  try {
+    for (const r of linkedReqs) {
+      checked.push(r.jiraKey as string);
+      const done = await tracker.isDone(r.jiraKey as string);
+      if (done && r.status !== "done") {
+        r.status = "done";
+        r.doneBySync = true;
+        completed.push(`requirement ${r.id} (${r.jiraKey})`);
+      } else if (!done && r.doneBySync) {
+        // Only reopen what sync itself completed; items closed by hand in Yeti stay as they are
+        r.status = "open";
+        r.doneBySync = false;
+        reopened.push(`requirement ${r.id} (${r.jiraKey})`);
+      }
+    }
+    for (const st of linkedStories) {
+      checked.push(st.jiraKey as string);
+      const done = await tracker.isDone(st.jiraKey as string);
+      const allTicked = st.acceptanceCriteria.every((_, i) => st.criteriaDone?.[i]);
+      if (done && !allTicked) {
+        st.criteriaDone = st.acceptanceCriteria.map(() => true);
+        st.doneBySync = true;
+        completed.push(`story ${st.id} (${st.jiraKey})`);
+      } else if (!done && st.doneBySync) {
+        st.criteriaDone = st.acceptanceCriteria.map(() => false);
+        st.doneBySync = false;
+        reopened.push(`story ${st.id} (${st.jiraKey})`);
+      }
+    }
+  } catch (err) {
+    await saveDb(db);
+    if (err instanceof TrackerError) return text({ error: err.message, checked, completed, reopened });
+    throw err;
+  }
+  await saveDb(db);
+  return text({ checked: checked.length, completed, reopened });
+}
 
 server.registerTool(
   "push_to_jira",
@@ -399,84 +538,23 @@ server.registerTool(
       update: z.boolean().default(false).describe("Also update issues already linked to a requirement or story"),
     },
   },
-  async ({ projectId, projectKey, dryRun, limit, update }) => {
-    const db = await loadDb();
-    const p = db.projects.find((x) => x.id === projectId);
-    if (!p) return text(`Project ${projectId} not found.`);
+  async (args) => pushToTracker("jira", args),
+);
 
-    const items = [
-      ...db.requirements
-        .filter((r) => r.projectId === p.id)
-        .map((r) => ({
-          kind: "requirement" as const,
-          ref: r,
-          issueType: "Task",
-          summary: r.title,
-          priority: "",
-          description: r.description,
-        })),
-      ...db.stories
-        .filter((st) => st.projectId === p.id)
-        .map((st) => ({
-          kind: "story" as const,
-          ref: st,
-          issueType: "Story",
-          summary: `As a ${st.persona}, I want ${st.goal}`,
-          priority: "",
-          description: [`So that ${st.benefit}.`, "", "Acceptance criteria:", ...st.acceptanceCriteria.map((c) => `- ${c}`)].join("\n"),
-        })),
-    ];
-    // Translate priorities with the Jira mapping; stories carry no priority
-    const withPriority = items.map((i) => {
-      const priority = i.kind === "requirement" ? jiraMapping.priorityName((i.ref as Requirement).priority) : undefined;
-      return { ...i, priority };
-    });
-    const pending = withPriority.filter((i) => !i.ref.jiraKey);
-    const linked = withPriority.filter((i) => i.ref.jiraKey);
-    const batch = pending.slice(0, limit ?? pending.length);
-    const skippedAlreadySent = linked.length;
-
-    if (dryRun) {
-      return text({
-        dryRun: true,
-        count: batch.length,
-        skippedAlreadySent,
-        updates: update ? linked.map((i) => ({ key: i.ref.jiraKey, summary: i.summary })) : [],
-        issues: batch.map((i) => ({ source: { kind: i.kind, id: i.ref.id }, issueType: i.issueType, project: projectKey, summary: i.summary, priority: i.priority, description: i.description })),
-      });
-    }
-
-    const tracker = trackerFor("jira");
-    if (typeof tracker === "string") return text(tracker);
-    const created: { source: string; key: string }[] = [];
-    try {
-      for (const i of batch) {
-        const key = await tracker.create(projectKey, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority || undefined });
-        i.ref.jiraKey = key;
-        created.push({ source: `${i.kind} ${i.ref.id}`, key });
-      }
-    } catch (err) {
-      await saveDb(db);
-      if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created });
-      throw err;
-    }
-
-    const updated: string[] = [];
-    if (update) {
-      try {
-        for (const i of linked) {
-          await tracker.update(i.ref.jiraKey as string, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority || undefined });
-          updated.push(i.ref.jiraKey as string);
-        }
-      } catch (err) {
-        await saveDb(db);
-        if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created, updated });
-        throw err;
-      }
-    }
-    await saveDb(db);
-    return text({ dryRun: false, created, updated, skippedAlreadySent });
+server.registerTool(
+  "push_to_tracker",
+  {
+    description: "Create issues in a work tracker for a project: jira or github. For Jira pass projectKey (e.g. PROJ); for GitHub the repository comes from GITHUB_REPO. Same rules as push_to_jira: dry run by default, items already sent are skipped.",
+    inputSchema: {
+      tracker: trackerName,
+      projectId: z.number().int(),
+      projectKey: z.string().optional().describe("Jira project key, required for jira"),
+      dryRun: z.boolean().default(true),
+      limit: z.number().int().min(1).optional(),
+      update: z.boolean().default(false),
+    },
   },
+  async ({ tracker, ...args }) => pushToTracker(tracker, args),
 );
 
 server.registerTool(
@@ -485,56 +563,16 @@ server.registerTool(
     description: "Read the status of linked Jira issues and mark items done in Yeti when their Jira issue is done. Requirements become done; stories get all their criteria ticked. Read-only on Jira.",
     inputSchema: { projectId: z.number().int() },
   },
-  async ({ projectId }) => {
-    const db = await loadDb();
-    const p = db.projects.find((x) => x.id === projectId);
-    if (!p) return text(`Project ${projectId} not found.`);
-    const tracker = trackerFor("jira");
-    if (typeof tracker === "string") return text(tracker);
+  async ({ projectId }) => syncWithTracker("jira", projectId),
+);
 
-    const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
-    const linkedStories = db.stories.filter((st) => st.projectId === p.id && st.jiraKey);
-    const completed: string[] = [];
-    const reopened: string[] = [];
-    const checked: string[] = [];
-
-    try {
-      for (const r of linkedReqs) {
-        checked.push(r.jiraKey as string);
-        const done = await tracker.isDone(r.jiraKey as string);
-        if (done && r.status !== "done") {
-          r.status = "done";
-          r.doneBySync = true;
-          completed.push(`requirement ${r.id} (${r.jiraKey})`);
-        } else if (!done && r.doneBySync) {
-          // Only reopen what sync itself completed; items closed by hand in Yeti stay as they are
-          r.status = "open";
-          r.doneBySync = false;
-          reopened.push(`requirement ${r.id} (${r.jiraKey})`);
-        }
-      }
-      for (const st of linkedStories) {
-        checked.push(st.jiraKey as string);
-        const done = await tracker.isDone(st.jiraKey as string);
-        const allTicked = st.acceptanceCriteria.every((_, i) => st.criteriaDone?.[i]);
-        if (done && !allTicked) {
-          st.criteriaDone = st.acceptanceCriteria.map(() => true);
-          st.doneBySync = true;
-          completed.push(`story ${st.id} (${st.jiraKey})`);
-        } else if (!done && st.doneBySync) {
-          st.criteriaDone = st.acceptanceCriteria.map(() => false);
-          st.doneBySync = false;
-          reopened.push(`story ${st.id} (${st.jiraKey})`);
-        }
-      }
-    } catch (err) {
-      await saveDb(db);
-      if (err instanceof TrackerError) return text({ error: err.message, checked, completed, reopened });
-      throw err;
-    }
-    await saveDb(db);
-    return text({ checked: checked.length, completed, reopened });
+server.registerTool(
+  "sync_tracker",
+  {
+    description: "Read the status of linked issues in a work tracker (jira or github) and mark matching items done or open in Yeti. Read-only on the tracker.",
+    inputSchema: { tracker: trackerName, projectId: z.number().int() },
   },
+  async ({ tracker, projectId }) => syncWithTracker(tracker, projectId),
 );
 
 server.registerTool(

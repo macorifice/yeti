@@ -57,16 +57,18 @@ assert.deepEqual(names, [
   "prioritize_rice",
   "project_summary",
   "push_to_jira",
+  "push_to_tracker",
   "search_items",
   "set_criterion_status",
   "set_project_mode",
   "set_requirement_status",
   "sync_from_jira",
+  "sync_tracker",
   "update_project",
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 35 tools");
+ok("exposes 37 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -554,6 +556,18 @@ const tplStories = JSON.parse(await call("list_stories", { projectId: tpl.projec
 assert.ok(tplStories.every((st) => st.requirementIds.length === 1), "each template story is linked to its requirement");
 assert.match(await call("create_project_from_template", { templateId: "nope" }), /not found/);
 ok("create_project_from_template builds the project with linked requirements and stories");
+
+// Second tracker: GitHub Issues. No network in tests: credentials are blank.
+const gh = JSON.parse(await call("create_project", { name: "GitHub preview", problem: "p", users: "u", goal: "g" }));
+await call("add_requirement", { title: "GitHub item", description: "d", priority: "must", projectId: gh.id });
+const ghPreview = JSON.parse(await call("push_to_tracker", { tracker: "github", projectId: gh.id }));
+assert.equal(ghPreview.tracker, "github");
+assert.equal(ghPreview.issues[0].issueType, "requirement");
+assert.equal(ghPreview.issues[0].priority, "priority: must");
+assert.match(await call("push_to_tracker", { tracker: "github", projectId: gh.id, dryRun: false }), /GITHUB_REPO/);
+assert.match(await call("sync_tracker", { tracker: "github", projectId: gh.id }), /GITHUB_REPO/);
+assert.match(await call("push_to_tracker", { tracker: "jira", projectId: gh.id }), /project key/);
+ok("push_to_tracker and sync_tracker work for GitHub previews and report missing credentials");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

@@ -105,6 +105,8 @@ Projects have a mode, chosen at creation:
 | Tool | What it does |
 | --- | --- |
 | `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
+| `push_to_tracker` | Create issues in a tracker, `jira` or `github`. For GitHub Issues, set `GITHUB_REPO` (owner/repo) and `GITHUB_TOKEN`; requirements become labelled issues, stories too. Same rules as `push_to_jira` |
+| `sync_tracker` | Mark items done or open from the status of their issues, in `jira` or `github`. Read-only on the tracker |
 | `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
 
 Requirements, stories, RICE scores and flows accept an optional `projectId` to link them to a project.
@@ -227,7 +229,9 @@ Never put the token in the repository, in a config file you commit, or in a chat
 
 Without these variables, `push_to_jira` refuses to send and tells you which one is missing. Dry-run previews work without them as well.
 
-Jira is the first supported work tracker. The integration sits behind a common interface, so other trackers can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
+Two work trackers are supported: Jira, and GitHub Issues. Each sits behind a common interface, so more can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
+
+For GitHub Issues, set `GITHUB_REPO` to `owner/repo` and `GITHUB_TOKEN` to a token with issues write access. Requirements become issues labelled `requirement` and `priority: must` (or `should`, `could`, `wont`); user stories become issues labelled `user-story`. An item is done when its issue is closed.
 
 ## Data
 
