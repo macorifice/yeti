@@ -30,11 +30,13 @@ const ok = (label) => {
 
 const names = (await client.listTools()).tools.map((t) => t.name).sort();
 assert.deepEqual(names, [
+  "add_decision",
   "add_requirement",
   "add_user_story",
   "advance_phase",
   "archive_project",
   "create_project",
+  "create_project_from_template",
   "delete_flow",
   "delete_project",
   "delete_requirement",
@@ -44,10 +46,12 @@ assert.deepEqual(names, [
   "export_dashboard",
   "get_project",
   "import_requirements",
+  "list_decisions",
   "list_flows",
   "list_projects",
   "list_requirements",
   "list_stories",
+  "list_templates",
   "map_user_flow",
   "open_dashboard",
   "prioritize_rice",
@@ -62,7 +66,7 @@ assert.deepEqual(names, [
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 31 tools");
+ok("exposes 35 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -525,6 +529,31 @@ assert.equal(serverJson.packages[0].identifier, pkgJson.name);
 assert.equal(serverJson.packages[0].version, pkgJson.version);
 assert.ok(serverJson.description.length <= 100, "registry descriptions are limited to 100 characters");
 ok("server.json matches package.json for the MCP Registry");
+
+// Decisions and templates
+const dec = JSON.parse(await call("create_project", { name: "Decision log", problem: "p", users: "u", goal: "g" }));
+assert.match(await call("list_decisions", { projectId: dec.id }), /No decisions/);
+const d1 = JSON.parse(await call("add_decision", { projectId: dec.id, title: "Storage", decision: "SQLite", reason: "Atomic saves without a server", alternatives: "A JSON file, a hosted database" }));
+assert.equal(d1.reason, "Atomic saves without a server");
+const decs = JSON.parse(await call("list_decisions", { projectId: dec.id }));
+assert.equal(decs.length, 1);
+assert.equal(decs[0].alternatives, "A JSON file, a hosted database");
+assert.match(await call("add_decision", { projectId: 9999, title: "x y", decision: "x y", reason: "x y" }), /not found/);
+ok("add_decision records choice, reason and rejected options per project");
+
+const tplList = JSON.parse(await call("list_templates"));
+assert.deepEqual(tplList.map((x) => x.id).sort(), ["customer-portal", "marketplace-mvp"]);
+const tpl = JSON.parse(await call("create_project_from_template", { templateId: "marketplace-mvp", name: "From template" }));
+assert.equal(tpl.requirements, 6);
+assert.equal(tpl.stories, 3);
+assert.equal(tpl.phase, "discovery");
+const tplInfo = JSON.parse(await call("get_project", { projectId: tpl.projectId }));
+assert.equal(tplInfo.requirementCount, 6);
+assert.equal(tplInfo.storyCount, 3);
+const tplStories = JSON.parse(await call("list_stories", { projectId: tpl.projectId }));
+assert.ok(tplStories.every((st) => st.requirementIds.length === 1), "each template story is linked to its requirement");
+assert.match(await call("create_project_from_template", { templateId: "nope" }), /not found/);
+ok("create_project_from_template builds the project with linked requirements and stories");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

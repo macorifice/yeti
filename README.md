@@ -59,6 +59,8 @@ Projects have a mode, chosen at creation:
 | `advance_phase` | Move to the next phase, or list what is missing |
 | `set_project_mode` | Switch a project between `strict` and `free` |
 | `duplicate_project` | Copy a project's requirements and stories into a new project, as open items (a template) |
+| `create_project_from_template` | Create a project from a starter template: a marketplace MVP or a customer portal, with linked requirements and stories |
+| `list_templates` | List the starter project templates |
 | `archive_project` | Hide a project from `list_projects` without deleting it |
 | `delete_project` | Permanently delete a project and its items. Requires `confirm: true`; Jira issues are not touched |
 
@@ -72,6 +74,8 @@ Projects have a mode, chosen at creation:
 | `set_requirement_status` | Mark a requirement `open` or `done` |
 | `delete_requirement` | Delete a requirement and unlink it from stories |
 | `add_user_story` | Create a user story with acceptance criteria, optionally linked to requirements (`requirementIds`) |
+| `add_decision` | Record a design decision with its reason and the options rejected |
+| `list_decisions` | List a project's design decisions, oldest first |
 | `list_stories` | List user stories with their ids, links, criteria state and Jira key |
 | `update_user_story` | Change a story's persona, goal, benefit, linked requirements or criteria. Changing criteria resets their done state |
 | `set_criterion_status` | Mark one acceptance criterion of a user story as done or not done |
