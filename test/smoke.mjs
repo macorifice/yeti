@@ -56,17 +56,18 @@ assert.deepEqual(names, [
   "open_dashboard",
   "prioritize_rice",
   "project_summary",
-  "push_to_jira",
+  "push_to_tracker",
   "search_items",
   "set_criterion_status",
   "set_project_mode",
+  "set_project_tracker",
   "set_requirement_status",
-  "sync_from_jira",
+  "sync_tracker",
   "update_project",
   "update_requirement",
   "update_user_story",
 ]);
-ok("exposes 35 tools");
+ok("exposes 36 tools");
 
 assert.equal(await call("list_requirements"), "No requirements found.");
 ok("empty list at start");
@@ -353,9 +354,10 @@ ok("import_requirements skips stories, falls back on bad priority, and checks th
 
 // Jira dry-run
 const jp = JSON.parse(await call("create_project", { name: "Jira preview", problem: "p", users: "u", goal: "g" }));
+await call("set_project_tracker", { projectId: jp.id, kind: "jira", target: "PROJ" });
 const jr = JSON.parse(await call("add_requirement", { title: "Login sicuro", description: "Accesso con 2FA", priority: "must", projectId: jp.id }));
 await call("add_user_story", { persona: "cliente", goal: "accedere", benefit: "vedere i preventivi", acceptanceCriteria: ["Richiede il codice", "Blocca dopo 5 errori"], requirementIds: [jr.id], projectId: jp.id });
-const preview = JSON.parse(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ" }));
+const preview = JSON.parse(await call("push_to_tracker", { projectId: jp.id }));
 assert.equal(preview.dryRun, true);
 assert.equal(preview.count, 2);
 const [jiraTask, jiraStory] = preview.issues;
@@ -364,22 +366,22 @@ assert.equal(jiraTask.priority, "Highest", "must maps to Highest");
 assert.equal(jiraTask.project, "PROJ");
 assert.equal(jiraStory.issueType, "Story");
 assert.match(jiraStory.description, /- Blocca dopo 5 errori/);
-ok("push_to_jira previews one Task per requirement and one Story per user story");
+ok("push_to_tracker previews one Task per requirement and one Story per user story");
 
-assert.match(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", dryRun: false }), /Missing JIRA_SITE/);
-const limited = JSON.parse(await call("push_to_jira", { projectId: jp.id, projectKey: "PROJ", limit: 1 }));
+assert.match(await call("push_to_tracker", { projectId: jp.id, dryRun: false }), /Missing JIRA_SITE/);
+const limited = JSON.parse(await call("push_to_tracker", { projectId: jp.id, limit: 1 }));
 assert.equal(limited.count, 1, "limit applies to the preview");
-assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
-assert.match(await call("push_to_jira", { projectId: 9999, projectKey: "PROJ" }), /not found/);
-ok("push_to_jira reports missing credentials and unknown projects, without sending");
+assert.match(await call("push_to_tracker", { projectId: 9999 }), /not found/);
+ok("push_to_tracker reports missing credentials and unknown projects, without sending");
 
 // Jira update and sync guards (no network: credentials are blank in tests)
 const sy = JSON.parse(await call("create_project", { name: "Sync guards", problem: "p", users: "u", goal: "g" }));
-assert.match(await call("sync_from_jira", { projectId: sy.id }), /Missing JIRA_SITE/);
-assert.match(await call("sync_from_jira", { projectId: 9999 }), /not found/);
-const upPreview = JSON.parse(await call("push_to_jira", { projectId: sy.id, projectKey: "PROJ", update: true }));
+await call("set_project_tracker", { projectId: sy.id, kind: "jira", target: "PROJ" });
+assert.match(await call("sync_tracker", { projectId: sy.id }), /Missing JIRA_SITE/);
+assert.match(await call("sync_tracker", { projectId: 9999 }), /not found/);
+const upPreview = JSON.parse(await call("push_to_tracker", { projectId: sy.id, update: true }));
 assert.deepEqual(upPreview.updates, []);
-ok("sync_from_jira reports missing credentials, and update preview lists nothing unlinked");
+ok("sync_tracker reports missing credentials, and update preview lists nothing unlinked");
 
 // Project summary
 const sm = JSON.parse(await call("create_project", { name: "Summary", problem: "p", users: "u", goal: "g" }));
@@ -554,6 +556,27 @@ const tplStories = JSON.parse(await call("list_stories", { projectId: tpl.projec
 assert.ok(tplStories.every((st) => st.requirementIds.length === 1), "each template story is linked to its requirement");
 assert.match(await call("create_project_from_template", { templateId: "nope" }), /not found/);
 ok("create_project_from_template builds the project with linked requirements and stories");
+
+// Second tracker: GitHub Issues. No network in tests: credentials are blank.
+const gh = JSON.parse(await call("create_project", { name: "GitHub preview", problem: "p", users: "u", goal: "g" }));
+await call("set_project_tracker", { projectId: gh.id, kind: "github", target: "owner/repo" });
+await call("add_requirement", { title: "GitHub item", description: "d", priority: "must", projectId: gh.id });
+const ghPreview = JSON.parse(await call("push_to_tracker", { projectId: gh.id }));
+assert.equal(ghPreview.tracker, "github");
+assert.equal(ghPreview.issues[0].issueType, "requirement");
+assert.equal(ghPreview.issues[0].priority, "priority: must");
+assert.match(await call("push_to_tracker", { projectId: gh.id, dryRun: false }), /GITHUB_REPO/);
+assert.match(await call("sync_tracker", { projectId: gh.id }), /GITHUB_REPO/);
+ok("push_to_tracker and sync_tracker use the project's GitHub tracker and report missing credentials");
+
+// A project without a tracker cannot send anything; invalid targets are refused
+const notracker = JSON.parse(await call("create_project", { name: "No tracker", problem: "p", users: "u", goal: "g" }));
+assert.match(await call("push_to_tracker", { projectId: notracker.id }), /set_project_tracker/);
+assert.match(await call("set_project_tracker", { projectId: notracker.id, kind: "jira", target: "proj" }), /PROJ/);
+assert.match(await call("set_project_tracker", { projectId: notracker.id, kind: "github", target: "justaname" }), /owner\/repo/);
+const bound = JSON.parse(await call("set_project_tracker", { projectId: notracker.id, kind: "github", target: "owner/repo" }));
+assert.deepEqual(bound.tracker, { kind: "github", target: "owner/repo" });
+ok("a project is bound to one tracker, and invalid targets are refused");
 
 await client.close();
 console.log(`\n${passed} checks passed`);

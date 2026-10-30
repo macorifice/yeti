@@ -104,8 +104,9 @@ Projects have a mode, chosen at creation:
 
 | Tool | What it does |
 | --- | --- |
-| `push_to_jira` | Create Jira issues for a project (Task per requirement, Story per user story). Dry-run by default; `limit` sends a subset; `update` refreshes issues already linked; items already sent are skipped |
-| `sync_from_jira` | Mark requirements and stories done when their Jira issue is done, and reopen them when it goes back. Items closed by hand in Yeti are not reopened. Read-only on Jira |
+| `set_project_tracker` | Bind a project to its work tracker: a Jira project key (e.g. `PROJ`) or GitHub `owner/repo`. Set it once; a project cannot change tracker once its items are linked |
+| `push_to_tracker` | Create the project's work items in its tracker: requirements become Tasks (Jira) or labelled issues (GitHub), stories become Stories or issues. Dry run by default; `limit` sends a subset; items already sent are skipped |
+| `sync_tracker` | Mark items done or open from the status of their issues in the project's tracker. Read-only on the tracker |
 
 Requirements, stories, RICE scores and flows accept an optional `projectId` to link them to a project.
 
@@ -207,7 +208,7 @@ npx yeti-mcp dashboard --port 4321
 Yeti works without any account. Only one tool talks to an external service:
 
 - **Everything else** (projects, requirements, stories, RICE, flows, verification, export, search) runs locally and needs no credentials.
-- **`push_to_jira`** creates issues in Jira. It needs three environment variables:
+- **`push_to_tracker`** creates items in Jira, when the project is bound to Jira. It needs three environment variables:
 
 | Variable | Value |
 | --- | --- |
@@ -225,9 +226,11 @@ export JIRA_API_TOKEN="your-token-here"
 
 Never put the token in the repository, in a config file you commit, or in a chat. If a token is exposed, revoke it in the same page and create a new one.
 
-Without these variables, `push_to_jira` refuses to send and tells you which one is missing. Dry-run previews work without them as well.
+For GitHub Issues, set `GITHUB_REPO` (owner/repo) and `GITHUB_TOKEN` instead. Without the variables for the bound tracker, sending is refused and the message names what is missing. Dry-run previews work without them.
 
-Jira is the first supported work tracker. The integration sits behind a common interface, so other trackers can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
+Yeti supports two work trackers, Jira and GitHub Issues. A project is bound to one of them with `set_project_tracker`. Each sits behind a common interface, so more can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
+
+For GitHub Issues, set `GITHUB_REPO` to `owner/repo` and `GITHUB_TOKEN` to a token with issues write access. Requirements become issues labelled `requirement` and `priority: must` (or `should`, `could`, `wont`); user stories become issues labelled `user-story`. An item is done when its issue is closed.
 
 ## Data
 

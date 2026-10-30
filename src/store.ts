@@ -24,7 +24,7 @@ export type Requirement = {
   description: string;
   priority: Priority;
   status: "open" | "done";
-  doneBySync?: boolean; // true when sync_from_jira marked it done, so it may reopen
+  doneBySync?: boolean; // true when sync_tracker marked it done, so it may reopen
   createdAt: string;
 };
 
@@ -38,7 +38,7 @@ export type Story = {
   benefit: string;
   acceptanceCriteria: string[];
   criteriaDone?: boolean[]; // same order as acceptanceCriteria
-  doneBySync?: boolean; // true when sync_from_jira ticked the criteria, so it may reopen
+  doneBySync?: boolean; // true when sync_tracker ticked the criteria, so it may reopen
   createdAt: string;
 };
 
@@ -52,6 +52,8 @@ export type Project = {
   closed: boolean;
   archived?: boolean; // hidden from list_projects unless asked for
   mode?: "strict" | "free"; // missing when created before modes existed: treated as strict
+  // The one tracker this project sends its work to. Set once, with set_project_tracker.
+  tracker?: { kind: "jira" | "github"; target: string }; // Jira project key, or owner/repo
   rice: { name: string; score: number }[];
   flows: string[];
   createdAt: string;
