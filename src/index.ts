@@ -391,17 +391,18 @@ const mappingFor = (name: TrackerName) => (name === "jira" ? jiraMapping : githu
 const trackerFor = (name: TrackerName) => (name === "jira" ? jiraTracker() : githubTracker());
 const trackerName = z.enum(["jira", "github"]);
 
-// Sends the project's requirements and stories to a tracker. The core decides what to send,
+const noTracker = "This project has no work tracker yet. Set one with set_project_tracker (a Jira project key, or owner/repo for GitHub).";
+
+// Sends the project's requirements and stories to its tracker. The core decides what to send,
 // skips what was already sent, saves the keys, and handles dry runs.
-async function pushToTracker(
-  name: TrackerName,
-  args: { projectId: number; projectKey?: string; dryRun: boolean; limit?: number; update: boolean },
-) {
-  const { projectId, projectKey = "", dryRun, limit, update } = args;
-  if (name === "jira" && !/^[A-Z][A-Z0-9]+$/.test(projectKey)) return text("A Jira project key (for example PROJ) is required.");
+async function pushToTracker(args: { projectId: number; dryRun: boolean; limit?: number; update: boolean }) {
+  const { projectId, dryRun, limit, update } = args;
   const db = await loadDb();
   const p = db.projects.find((x) => x.id === projectId);
   if (!p) return text(`Project ${projectId} not found.`);
+  if (!p.tracker) return text(noTracker);
+  const name: TrackerName = p.tracker.kind;
+  const projectKey = p.tracker.kind === "jira" ? p.tracker.target : "";
   const mapping = mappingFor(name);
 
   const items = [
@@ -474,12 +475,13 @@ async function pushToTracker(
   return text({ dryRun: false, tracker: name, created, updated, skippedAlreadySent });
 }
 
-// Reads the status of linked issues and marks matching items done, or reopens what it completed
-async function syncWithTracker(name: TrackerName, projectId: number) {
+// Reads the status of linked issues in the project's tracker and marks matching items done, or reopens what it completed
+async function syncWithTracker(projectId: number) {
   const db = await loadDb();
   const p = db.projects.find((x) => x.id === projectId);
   if (!p) return text(`Project ${projectId} not found.`);
-  const tracker = trackerFor(name);
+  if (!p.tracker) return text(noTracker);
+  const tracker = trackerFor(p.tracker.kind);
   if (typeof tracker === "string") return text(tracker);
 
   const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
@@ -527,52 +529,52 @@ async function syncWithTracker(name: TrackerName, projectId: number) {
 }
 
 server.registerTool(
-  "push_to_jira",
+  "set_project_tracker",
   {
-    description: "Create Jira issues for a project: one Task per requirement and one Story per user story. Items already sent are skipped. With update: true, also refreshes the issues already linked. dryRun (default true) only lists what would be sent.",
+    description: "Bind a project to its work tracker: jira (with a Jira project key, e.g. PROJ) or github (with owner/repo). Set it once, before sending anything. A project with items already sent cannot change tracker.",
     inputSchema: {
       projectId: z.number().int(),
-      projectKey: z.string().regex(/^[A-Z][A-Z0-9]+$/).describe("Jira project key, e.g. PROJ"),
-      dryRun: z.boolean().default(true),
-      limit: z.number().int().min(1).optional().describe("Send at most this many new issues; useful to test with one"),
-      update: z.boolean().default(false).describe("Also update issues already linked to a requirement or story"),
+      kind: trackerName,
+      target: z.string().min(2).describe("Jira project key (e.g. PROJ) for jira, or owner/repo for github"),
     },
   },
-  async (args) => pushToTracker("jira", args),
+  async ({ projectId, kind, target }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const valid = kind === "jira" ? /^[A-Z][A-Z0-9]+$/.test(target) : /^[\w.-]+\/[\w.-]+$/.test(target);
+    if (!valid) return text(kind === "jira" ? "A Jira project key looks like PROJ (uppercase letters and digits)." : "A GitHub target looks like owner/repo.");
+    const linked = [...db.requirements, ...db.stories].some((x) => x.projectId === projectId && x.jiraKey);
+    if (linked && p.tracker && (p.tracker.kind !== kind || p.tracker.target !== target)) {
+      return text("This project already has items in its tracker. Keys from two trackers must not mix, so it cannot change tracker.");
+    }
+    p.tracker = { kind, target };
+    await saveDb(db);
+    return text({ id: p.id, name: p.name, tracker: p.tracker });
+  },
 );
 
 server.registerTool(
   "push_to_tracker",
   {
-    description: "Create issues in a work tracker for a project: jira or github. For Jira pass projectKey (e.g. PROJ); for GitHub the repository comes from GITHUB_REPO. Same rules as push_to_jira: dry run by default, items already sent are skipped.",
+    description: "Create the project's work items in its tracker: one Task per requirement and one Story per user story. Items already sent are skipped. With update: true, refreshes the items already linked. dryRun (default true) only lists what would be sent. Set the tracker first with set_project_tracker.",
     inputSchema: {
-      tracker: trackerName,
       projectId: z.number().int(),
-      projectKey: z.string().optional().describe("Jira project key, required for jira"),
       dryRun: z.boolean().default(true),
-      limit: z.number().int().min(1).optional(),
-      update: z.boolean().default(false),
+      limit: z.number().int().min(1).optional().describe("Send at most this many new items; useful to test with one"),
+      update: z.boolean().default(false).describe("Also refresh the items already linked"),
     },
   },
-  async ({ tracker, ...args }) => pushToTracker(tracker, args),
-);
-
-server.registerTool(
-  "sync_from_jira",
-  {
-    description: "Read the status of linked Jira issues and mark items done in Yeti when their Jira issue is done. Requirements become done; stories get all their criteria ticked. Read-only on Jira.",
-    inputSchema: { projectId: z.number().int() },
-  },
-  async ({ projectId }) => syncWithTracker("jira", projectId),
+  async (args) => pushToTracker(args),
 );
 
 server.registerTool(
   "sync_tracker",
   {
-    description: "Read the status of linked issues in a work tracker (jira or github) and mark matching items done or open in Yeti. Read-only on the tracker.",
-    inputSchema: { tracker: trackerName, projectId: z.number().int() },
+    description: "Read the status of the project's linked items in its tracker and mark them done or open in Yeti. Read-only on the tracker.",
+    inputSchema: { projectId: z.number().int() },
   },
-  async ({ tracker, projectId }) => syncWithTracker(tracker, projectId),
+  async ({ projectId }) => syncWithTracker(projectId),
 );
 
 server.registerTool(
