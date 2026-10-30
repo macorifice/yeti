@@ -57,10 +57,22 @@ export type Project = {
   createdAt: string;
 };
 
+// A design decision: what was chosen, why, and what was rejected
+export type Decision = {
+  id: number;
+  projectId: number;
+  title: string;
+  decision: string;
+  reason: string;
+  alternatives?: string;
+  createdAt: string;
+};
+
 export type DB = {
   projects: Project[];
   requirements: Requirement[];
   stories: Story[];
+  decisions: Decision[];
   nextId: number;
 };
 
@@ -76,6 +88,7 @@ function openDb(): DatabaseSync {
     CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS requirements (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS stories (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   connection = c;
@@ -89,23 +102,23 @@ export async function loadDb(): Promise<DB> {
     // First run on this database: import the old JSON file if there is one
     try {
       const legacy = JSON.parse(await readFile(LEGACY_JSON_PATH, "utf8")) as Partial<DB>;
-      const db: DB = { projects: legacy.projects ?? [], requirements: legacy.requirements ?? [], stories: legacy.stories ?? [], nextId: legacy.nextId ?? 1 };
+      const db: DB = { projects: legacy.projects ?? [], requirements: legacy.requirements ?? [], stories: legacy.stories ?? [], decisions: [], nextId: legacy.nextId ?? 1 };
       await saveDb(db);
       return db;
     } catch {
-      return { projects: [], requirements: [], stories: [], nextId: 1 };
+      return { projects: [], requirements: [], stories: [], decisions: [], nextId: 1 };
     }
   }
   const rows = <T>(table: string): T[] =>
     (c.prepare(`SELECT data FROM ${table} ORDER BY id`).all() as { data: string }[]).map((r) => JSON.parse(r.data) as T);
-  return { projects: rows<Project>("projects"), requirements: rows<Requirement>("requirements"), stories: rows<Story>("stories"), nextId: Number(meta.value) };
+  return { projects: rows<Project>("projects"), requirements: rows<Requirement>("requirements"), stories: rows<Story>("stories"), decisions: rows<Decision>("decisions"), nextId: Number(meta.value) };
 }
 
 export async function saveDb(db: DB): Promise<void> {
   const c = openDb();
   c.exec("BEGIN");
   try {
-    c.exec("DELETE FROM projects; DELETE FROM requirements; DELETE FROM stories; DELETE FROM meta;");
+    c.exec("DELETE FROM projects; DELETE FROM requirements; DELETE FROM stories; DELETE FROM decisions; DELETE FROM meta;");
     const put = (table: string, items: { id: number }[]) => {
       const stmt = c.prepare(`INSERT INTO ${table} (id, data) VALUES (?, ?)`);
       for (const item of items) stmt.run(item.id, JSON.stringify(item));
@@ -113,6 +126,7 @@ export async function saveDb(db: DB): Promise<void> {
     put("projects", db.projects);
     put("requirements", db.requirements);
     put("stories", db.stories);
+    put("decisions", db.decisions);
     c.prepare("INSERT INTO meta (key, value) VALUES ('nextId', ?)").run(String(db.nextId));
     c.exec("COMMIT");
   } catch (err) {

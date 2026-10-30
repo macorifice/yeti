@@ -8,7 +8,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { renderDashboard, type ProjectView } from "./dashboard.js";
 import { startDashboard } from "./web.js";
-import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Priority, type Project, type Requirement, type Story } from "./store.js";
+import { PROJECT_TEMPLATES } from "./templates.js";
+import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Decision, type Priority, type Project, type Requirement, type Story } from "./store.js";
 
 const text = (value: unknown) => ({
   content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
@@ -788,6 +789,126 @@ server.registerTool(
       dashboardUrl = url;
     }
     return text({ url: dashboardUrl });
+  },
+);
+
+server.registerTool(
+  "add_decision",
+  {
+    description: "Record a design decision for a project: what was chosen, why, and which alternatives were rejected. Decisions are kept with the project, so the reasons outlive the chat.",
+    inputSchema: {
+      projectId: z.number().int(),
+      title: z.string().min(3).describe("Short name of the decision"),
+      decision: z.string().min(3).describe("What was chosen"),
+      reason: z.string().min(3).describe("Why it was chosen"),
+      alternatives: z.string().optional().describe("What was considered and rejected"),
+    },
+  },
+  async ({ projectId, title, decision, reason, alternatives }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const entry: Decision = {
+      id: db.nextId++,
+      projectId,
+      title,
+      decision,
+      reason,
+      ...(alternatives ? { alternatives } : {}),
+      createdAt: new Date().toISOString(),
+    };
+    db.decisions.push(entry);
+    await saveDb(db);
+    return text(entry);
+  },
+);
+
+server.registerTool(
+  "list_decisions",
+  {
+    description: "List the design decisions recorded for a project, oldest first.",
+    inputSchema: { projectId: z.number().int() },
+  },
+  async ({ projectId }) => {
+    const db = await loadDb();
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return text(`Project ${projectId} not found.`);
+    const items = db.decisions.filter((d) => d.projectId === projectId);
+    return text(items.length ? items : "No decisions recorded for this project.");
+  },
+);
+
+server.registerTool(
+  "list_templates",
+  {
+    description: "List the starter project templates: a marketplace MVP and a customer self-service portal. Use one with create_project_from_template.",
+    inputSchema: {},
+  },
+  async () => {
+    return text(PROJECT_TEMPLATES.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      requirements: t.requirements.length,
+      stories: t.stories.length,
+    })));
+  },
+);
+
+server.registerTool(
+  "create_project_from_template",
+  {
+    description: "Create a project from a starter template. It starts in discovery with its requirements and user stories open, linked to each other. Adapt them afterwards with the usual tools.",
+    inputSchema: {
+      templateId: z.string(),
+      name: z.string().min(2).optional().describe("Project name; defaults to the template name"),
+    },
+  },
+  async ({ templateId, name }) => {
+    const tpl = PROJECT_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return text(`Template "${templateId}" not found. Use list_templates to see the options.`);
+    const db = await loadDb();
+    const project: Project = {
+      id: db.nextId++,
+      name: name ?? tpl.name,
+      problem: tpl.problem,
+      users: tpl.users,
+      goal: tpl.goal,
+      phase: 0,
+      closed: false,
+      rice: [],
+      flows: [],
+      createdAt: new Date().toISOString(),
+    };
+    db.projects.push(project);
+    const reqIds = new Map<string, number>();
+    for (const r of tpl.requirements) {
+      const req: Requirement = {
+        id: db.nextId++,
+        projectId: project.id,
+        title: r.title,
+        description: r.description,
+        priority: r.priority,
+        status: "open",
+        createdAt: new Date().toISOString(),
+      };
+      db.requirements.push(req);
+      reqIds.set(r.title, req.id);
+    }
+    for (const st of tpl.stories) {
+      db.stories.push({
+        id: db.nextId++,
+        projectId: project.id,
+        persona: st.persona,
+        goal: st.goal,
+        benefit: st.benefit,
+        acceptanceCriteria: st.acceptanceCriteria,
+        requirementIds: st.covers.map((t) => reqIds.get(t)).filter((id): id is number => id !== undefined),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    await saveDb(db);
+    return text({ projectId: project.id, name: project.name, requirements: tpl.requirements.length, stories: tpl.stories.length, phase: PHASES[0] });
   },
 );
 

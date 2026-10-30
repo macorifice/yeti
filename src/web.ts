@@ -94,6 +94,9 @@ function detail(db: DB, p: Project) {
       jiraKey: jiraKey(s.jiraKey),
     })),
     rice: [...p.rice].sort((a, b) => b.score - a.score),
+    decisions: db.decisions
+      .filter((d) => d.projectId === p.id)
+      .map((d) => ({ id: d.id, title: d.title, decision: d.decision, reason: d.reason, alternatives: d.alternatives ?? "", createdAt: d.createdAt })),
     flows: p.flows.map(flowParts),
     jiraSite: jiraSite(),
   };

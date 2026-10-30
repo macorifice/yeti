@@ -319,7 +319,20 @@
           })
         : h("p", { class: "muted" }, "No flows yet."));
 
-    mainEl.replaceChildren(header, mustCard, reqCard, storyCard, riceCard, flowCard,
+    const decisionCard = h("section", { class: "card" },
+      h("h2", null, "Decisions"),
+      d.decisions.length
+        ? h("ul", { class: "rows" }, d.decisions.map((x) =>
+            h("li", { class: "row" },
+              h("div", null,
+                h("div", { class: "title" }, x.title),
+                h("div", { class: "desc" }, x.decision),
+                h("div", { class: "desc" }, "Why: " + x.reason),
+                x.alternatives ? h("div", { class: "desc" }, "Rejected: " + x.alternatives) : null),
+              h("div", { class: "side" }, x.createdAt.slice(0, 10)))))
+        : h("p", { class: "muted" }, "No decisions recorded yet."));
+
+    mainEl.replaceChildren(header, mustCard, reqCard, storyCard, riceCard, decisionCard, flowCard,
       h("footer", null, "Read-only view. It refreshes every 10 seconds. Work items live in Jira."));
     renderFlows(flowNodes);
   }
