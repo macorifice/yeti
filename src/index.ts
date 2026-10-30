@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { renderDashboard, type ProjectView } from "./dashboard.js";
 import { startDashboard } from "./web.js";
 import { PROJECT_TEMPLATES } from "./templates.js";
+import { jiraMapping, jiraTracker } from "./integrations/jira.js";
+import { TrackerError } from "./integrations/tracker.js";
 import { DB_PATH, PHASES, loadDb, saveDb, missingFor, type Decision, type Priority, type Project, type Requirement, type Story } from "./store.js";
 
 const text = (value: unknown) => ({
@@ -382,24 +384,8 @@ server.registerTool(
   },
 );
 
-// MoSCoW priority mapped to Jira's default priority names
-const JIRA_PRIORITY: Record<Priority, string> = { must: "Highest", should: "High", could: "Medium", wont: "Low" };
-
-// Jira needs descriptions as a document: one paragraph per line
-const adfDoc = (block: string) => ({
-  type: "doc",
-  version: 1,
-  content: (block || " ").split("\n").map((line) => ({ type: "paragraph", content: [{ type: "text", text: line || " " }] })),
-});
-
-// Credentials from the environment, or a message saying which one is missing
-function jiraAuth(): { site: string; auth: string } | string {
-  const site = process.env.JIRA_SITE;
-  const email = process.env.JIRA_EMAIL;
-  const token = process.env.JIRA_API_TOKEN;
-  if (!site || !email || !token) return "Missing JIRA_SITE, JIRA_EMAIL or JIRA_API_TOKEN in the environment.";
-  return { site, auth: "Basic " + Buffer.from(`${email}:${token}`).toString("base64") };
-}
+// Work trackers Yeti can send items to. Only Jira for now.
+const trackerFor = (name: string) => (name === "jira" ? jiraTracker() : `Unknown tracker "${name}".`);
 
 server.registerTool(
   "push_to_jira",
@@ -426,7 +412,7 @@ server.registerTool(
           ref: r,
           issueType: "Task",
           summary: r.title,
-          priority: JIRA_PRIORITY[r.priority],
+          priority: "",
           description: r.description,
         })),
       ...db.stories
@@ -436,12 +422,17 @@ server.registerTool(
           ref: st,
           issueType: "Story",
           summary: `As a ${st.persona}, I want ${st.goal}`,
-          priority: undefined,
+          priority: "",
           description: [`So that ${st.benefit}.`, "", "Acceptance criteria:", ...st.acceptanceCriteria.map((c) => `- ${c}`)].join("\n"),
         })),
     ];
-    const pending = items.filter((i) => !i.ref.jiraKey);
-    const linked = items.filter((i) => i.ref.jiraKey);
+    // Translate priorities with the Jira mapping; stories carry no priority
+    const withPriority = items.map((i) => {
+      const priority = i.kind === "requirement" ? jiraMapping.priorityName((i.ref as Requirement).priority) : undefined;
+      return { ...i, priority };
+    });
+    const pending = withPriority.filter((i) => !i.ref.jiraKey);
+    const linked = withPriority.filter((i) => i.ref.jiraKey);
     const batch = pending.slice(0, limit ?? pending.length);
     const skippedAlreadySent = linked.length;
 
@@ -455,53 +446,32 @@ server.registerTool(
       });
     }
 
-    const jira = jiraAuth();
-    if (typeof jira === "string") return text(jira);
-    const headers = { Authorization: jira.auth, "Content-Type": "application/json", Accept: "application/json" };
-
+    const tracker = trackerFor("jira");
+    if (typeof tracker === "string") return text(tracker);
     const created: { source: string; key: string }[] = [];
-    for (const i of batch) {
-      const res = await fetch(`${jira.site}/rest/api/3/issue`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          fields: {
-            project: { key: projectKey },
-            issuetype: { name: i.issueType },
-            summary: i.summary,
-            description: adfDoc(i.description),
-            ...(i.priority ? { priority: { name: i.priority } } : {}),
-          },
-        }),
-      });
-      if (!res.ok) {
-        await saveDb(db);
-        return text({ error: `Jira answered ${res.status}`, detail: (await res.text()).slice(0, 500), created });
+    try {
+      for (const i of batch) {
+        const key = await tracker.create(projectKey, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority || undefined });
+        i.ref.jiraKey = key;
+        created.push({ source: `${i.kind} ${i.ref.id}`, key });
       }
-      const key = (await res.json()).key as string;
-      i.ref.jiraKey = key;
-      created.push({ source: `${i.kind} ${i.ref.id}`, key });
+    } catch (err) {
+      await saveDb(db);
+      if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created });
+      throw err;
     }
 
     const updated: string[] = [];
     if (update) {
-      for (const i of linked) {
-        const res = await fetch(`${jira.site}/rest/api/3/issue/${i.ref.jiraKey}`, {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({
-            fields: {
-              summary: i.summary,
-              description: adfDoc(i.description),
-              ...(i.priority ? { priority: { name: i.priority } } : {}),
-            },
-          }),
-        });
-        if (!res.ok) {
-          await saveDb(db);
-          return text({ error: `Jira answered ${res.status} updating ${i.ref.jiraKey}`, detail: (await res.text()).slice(0, 500), created, updated });
+      try {
+        for (const i of linked) {
+          await tracker.update(i.ref.jiraKey as string, { issueType: i.issueType, summary: i.summary, description: i.description, priority: i.priority || undefined });
+          updated.push(i.ref.jiraKey as string);
         }
-        updated.push(i.ref.jiraKey as string);
+      } catch (err) {
+        await saveDb(db);
+        if (err instanceof TrackerError) return text({ error: err.message, detail: err.detail, created, updated });
+        throw err;
       }
     }
     await saveDb(db);
@@ -519,8 +489,8 @@ server.registerTool(
     const db = await loadDb();
     const p = db.projects.find((x) => x.id === projectId);
     if (!p) return text(`Project ${projectId} not found.`);
-    const jira = jiraAuth();
-    if (typeof jira === "string") return text(jira);
+    const tracker = trackerFor("jira");
+    if (typeof tracker === "string") return text(tracker);
 
     const linkedReqs = db.requirements.filter((r) => r.projectId === p.id && r.jiraKey);
     const linkedStories = db.stories.filter((st) => st.projectId === p.id && st.jiraKey);
@@ -528,19 +498,10 @@ server.registerTool(
     const reopened: string[] = [];
     const checked: string[] = [];
 
-    const fetchDone = async (key: string) => {
-      const res = await fetch(`${jira.site}/rest/api/3/issue/${key}?fields=status`, {
-        headers: { Authorization: jira.auth, Accept: "application/json" },
-      });
-      if (!res.ok) throw new Error(`Jira answered ${res.status} for ${key}`);
-      const body = await res.json();
-      return body.fields.status.statusCategory.key === "done";
-    };
-
     try {
       for (const r of linkedReqs) {
         checked.push(r.jiraKey as string);
-        const done = await fetchDone(r.jiraKey as string);
+        const done = await tracker.isDone(r.jiraKey as string);
         if (done && r.status !== "done") {
           r.status = "done";
           r.doneBySync = true;
@@ -554,7 +515,7 @@ server.registerTool(
       }
       for (const st of linkedStories) {
         checked.push(st.jiraKey as string);
-        const done = await fetchDone(st.jiraKey as string);
+        const done = await tracker.isDone(st.jiraKey as string);
         const allTicked = st.acceptanceCriteria.every((_, i) => st.criteriaDone?.[i]);
         if (done && !allTicked) {
           st.criteriaDone = st.acceptanceCriteria.map(() => true);
@@ -568,7 +529,8 @@ server.registerTool(
       }
     } catch (err) {
       await saveDb(db);
-      return text({ error: (err as Error).message, checked, completed, reopened });
+      if (err instanceof TrackerError) return text({ error: err.message, checked, completed, reopened });
+      throw err;
     }
     await saveDb(db);
     return text({ checked: checked.length, completed, reopened });
