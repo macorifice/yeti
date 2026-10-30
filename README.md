@@ -227,6 +227,8 @@ Never put the token in the repository, in a config file you commit, or in a chat
 
 Without these variables, `push_to_jira` refuses to send and tells you which one is missing. Dry-run previews work without them as well.
 
+Jira is the first supported work tracker. The integration sits behind a common interface, so other trackers can be added: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-work-tracker).
+
 ## Data
 
 Data is stored in SQLite. From a source checkout the default is `data/yeti.sqlite` inside the project folder; with `npx`, set `PRODUCT_DESIGN_DB` as shown in the quick start. Earlier versions used `data/db.json`: it is imported automatically the first time the new version runs, and then left untouched. To use another location, set the `PRODUCT_DESIGN_DB` environment variable:
